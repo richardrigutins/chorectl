@@ -430,3 +430,6 @@ FodyWeavers.xsd
 
 # Local planning files
 .planning/
+
+# Claude files
+.claude
