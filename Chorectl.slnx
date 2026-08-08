@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Chorectl.Cli/Chorectl.Cli.csproj" />
+    <Project Path="src/Chorectl.Core/Chorectl.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Chorectl.Cli.Tests/Chorectl.Cli.Tests.csproj" />
+    <Project Path="tests/Chorectl.Core.Tests/Chorectl.Core.Tests.csproj" />
+  </Folder>
+</Solution>
