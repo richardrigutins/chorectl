@@ -6,22 +6,27 @@ using Octokit;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
+string token;
+try
+{
+    token = new GitHubAuth(new ProcessRunner()).GetToken();
+}
+catch (GitHubAuthException ex)
+{
+    AnsiConsole.MarkupLine($"[red]Error:[/] {ex.Message.EscapeMarkup()}");
+    return 1;
+}
+
 var services = new ServiceCollection();
 
 services.AddSingleton(AnsiConsole.Console);
-services.AddSingleton<IProcessRunner, ProcessRunner>();
-services.AddSingleton<GitHubAuth>();
-services.AddSingleton<IGitHubClient>(provider =>
-{
-    var token = provider.GetRequiredService<GitHubAuth>().GetToken();
-    return new GitHubClient(new Octokit.ProductHeaderValue("chorectl")) { Credentials = new Credentials(token) };
-});
+services.AddSingleton<IGitHubClient>(_ =>
+    new GitHubClient(new Octokit.ProductHeaderValue("chorectl")) { Credentials = new Credentials(token) });
 services.AddSingleton<IRepositorySource, OctokitRepositorySource>();
 services.AddSingleton<IPullRequestMerger, OctokitPullRequestMerger>();
 services.AddSingleton<RestClient>();
-services.AddSingleton(provider =>
+services.AddSingleton(_ =>
 {
-    var token = provider.GetRequiredService<GitHubAuth>().GetToken();
     var httpClient = new HttpClient { BaseAddress = new Uri("https://api.github.com/") };
     httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
     httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("chorectl", "1.0"));
