@@ -92,6 +92,7 @@ public sealed class GraphQlClient(HttpClient httpClient)
         Review = ToReviewStatus(node.ReviewDecision),
         MergeStateStatus = node.MergeStateStatus,
         SemverLevel = SemverParser.Classify(node.Title),
+        DependencyName = SemverParser.ParseDependencyName(node.Title),
     };
 
     private static CiStatus ToCiStatus(string? state) => state switch
