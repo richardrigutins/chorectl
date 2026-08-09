@@ -6,10 +6,11 @@ using Octokit;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
+IGitHubAuthenticator authenticator = new GhCliAuthenticator(new ProcessRunner());
 string token;
 try
 {
-    token = new GitHubAuth(new ProcessRunner()).GetToken();
+    token = authenticator.GetToken();
 }
 catch (GitHubAuthException ex)
 {

@@ -6,7 +6,7 @@ namespace Chorectl.Core.GitHub;
 /// <summary>
 /// Retrieves the user's GitHub credential via the gh CLI.
 /// </summary>
-public sealed partial class GitHubAuth(IProcessRunner processRunner)
+public sealed partial class GhCliAuthenticator(IProcessRunner processRunner) : IGitHubAuthenticator
 {
     // gh auth token was introduced in gh 2.5.0.
     private static readonly Version MinimumGhVersion = new(2, 5, 0);
