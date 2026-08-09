@@ -1,5 +1,4 @@
 using System.Net.Http.Headers;
-using Chorectl.Cli.Commands.Dependabot;
 using Chorectl.Cli.Infrastructure;
 using Chorectl.Core.GitHub;
 using Microsoft.Extensions.DependencyInjection;
@@ -30,13 +29,6 @@ services.AddSingleton(provider =>
 });
 
 var app = new CommandApp(new TypeRegistrar(services));
-app.Configure(config =>
-{
-    config.AddBranch("dependabot", dependabot =>
-    {
-        dependabot.AddCommand<ListCommand>("list");
-        dependabot.AddCommand<MergeCommand>("merge");
-    });
-});
+app.Configure(AppConfiguration.Configure);
 
 return app.Run(args);
