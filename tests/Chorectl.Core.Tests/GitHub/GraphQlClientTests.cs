@@ -38,7 +38,7 @@ public class GraphQlClientTests
         Assert.Equal(CiStatus.Passing, pr.Ci);
         Assert.Equal(ReviewStatus.Approved, pr.Review);
         Assert.Equal("CLEAN", pr.MergeStateStatus);
-        Assert.Equal(SemverLevel.Unknown, pr.SemverLevel);
+        Assert.Equal(SemverLevel.Minor, pr.SemverLevel);
     }
 
     [Theory]
