@@ -11,10 +11,6 @@ public sealed partial class GitHubAuth(IProcessRunner processRunner)
     // gh auth token was introduced in gh 2.5.0.
     private static readonly Version MinimumGhVersion = new(2, 5, 0);
 
-    public GitHubAuth() : this(new ProcessRunner())
-    {
-    }
-
     /// <summary>
     /// Runs <see cref="CheckPrerequisites"/> and retrieves the current GitHub token from <c>gh auth token</c>.
     /// </summary>
