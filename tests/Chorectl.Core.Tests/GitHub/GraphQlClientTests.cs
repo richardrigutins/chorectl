@@ -39,6 +39,7 @@ public class GraphQlClientTests
         Assert.Equal(ReviewStatus.Approved, pr.Review);
         Assert.Equal("CLEAN", pr.MergeStateStatus);
         Assert.Equal(SemverLevel.Minor, pr.SemverLevel);
+        Assert.Equal("firebase-tools", pr.DependencyName);
     }
 
     [Theory]

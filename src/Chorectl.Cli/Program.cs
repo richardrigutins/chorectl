@@ -1,12 +1,15 @@
 using System.Net.Http.Headers;
+using Chorectl.Cli.Commands.Dependabot;
 using Chorectl.Cli.Infrastructure;
 using Chorectl.Core.GitHub;
 using Microsoft.Extensions.DependencyInjection;
 using Octokit;
+using Spectre.Console;
 using Spectre.Console.Cli;
 
 var services = new ServiceCollection();
 
+services.AddSingleton(AnsiConsole.Console);
 services.AddSingleton<IProcessRunner, ProcessRunner>();
 services.AddSingleton<GitHubAuth>();
 services.AddSingleton<IGitHubClient>(provider =>
@@ -26,4 +29,12 @@ services.AddSingleton(provider =>
 });
 
 var app = new CommandApp(new TypeRegistrar(services));
+app.Configure(config =>
+{
+    config.AddBranch("dependabot", dependabot =>
+    {
+        dependabot.AddCommand<ListCommand>("list");
+    });
+});
+
 return app.Run(args);
