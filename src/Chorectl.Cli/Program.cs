@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using Chorectl.Cli.Infrastructure;
 using Chorectl.Core.GitHub;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,10 +12,18 @@ services.AddSingleton<GitHubAuth>();
 services.AddSingleton<IGitHubClient>(provider =>
 {
     var token = provider.GetRequiredService<GitHubAuth>().GetToken();
-    return new GitHubClient(new ProductHeaderValue("chorectl")) { Credentials = new Credentials(token) };
+    return new GitHubClient(new Octokit.ProductHeaderValue("chorectl")) { Credentials = new Credentials(token) };
 });
 services.AddSingleton<IRepositorySource, OctokitRepositorySource>();
 services.AddSingleton<RestClient>();
+services.AddSingleton(provider =>
+{
+    var token = provider.GetRequiredService<GitHubAuth>().GetToken();
+    var httpClient = new HttpClient { BaseAddress = new Uri("https://api.github.com/") };
+    httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+    httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("chorectl", "1.0"));
+    return new GraphQlClient(httpClient);
+});
 
 var app = new CommandApp(new TypeRegistrar(services));
 return app.Run(args);
