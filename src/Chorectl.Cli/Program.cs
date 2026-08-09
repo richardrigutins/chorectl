@@ -18,6 +18,7 @@ services.AddSingleton<IGitHubClient>(provider =>
     return new GitHubClient(new Octokit.ProductHeaderValue("chorectl")) { Credentials = new Credentials(token) };
 });
 services.AddSingleton<IRepositorySource, OctokitRepositorySource>();
+services.AddSingleton<IPullRequestMerger, OctokitPullRequestMerger>();
 services.AddSingleton<RestClient>();
 services.AddSingleton(provider =>
 {
@@ -34,6 +35,7 @@ app.Configure(config =>
     config.AddBranch("dependabot", dependabot =>
     {
         dependabot.AddCommand<ListCommand>("list");
+        dependabot.AddCommand<MergeCommand>("merge");
     });
 });
 

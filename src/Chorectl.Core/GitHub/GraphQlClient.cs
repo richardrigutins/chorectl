@@ -39,6 +39,31 @@ public sealed class GraphQlClient(HttpClient httpClient)
         return results;
     }
 
+    /// <summary>
+    /// Re-fetches a single PR's current state, for re-verification immediately before acting on it.
+    /// Returns <see langword="null"/> if the PR is no longer open (closed, merged, or not found).
+    /// </summary>
+    public async Task<DependabotPr?> RefetchAsync(string owner, DependabotPr pr, CancellationToken cancellationToken = default)
+    {
+        var request = new { query = Queries.DependabotPrByNumber, variables = new { owner, name = pr.Repo, number = pr.Number } };
+        using var response = await httpClient.PostAsJsonAsync("graphql", request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var body = await response.Content.ReadFromJsonAsync<PrByNumberResponse>(JsonOptions, cancellationToken);
+        if (body?.Errors is { Count: > 0 } errors)
+        {
+            throw new InvalidOperationException($"GraphQL query failed: {string.Join("; ", errors.Select(e => e.Message))}");
+        }
+
+        var node = body?.Data?.Repository?.PullRequest;
+        if (node is null || node.State is not (null or "OPEN"))
+        {
+            return null;
+        }
+
+        return ToDependabotPr(node);
+    }
+
     private async Task<SearchConnection> RunSearchAsync(string searchQuery, string? cursor, CancellationToken cancellationToken)
     {
         var request = new { query = Queries.DependabotPrSearch, variables = new { searchQuery, after = cursor } };
@@ -93,6 +118,8 @@ public sealed class GraphQlClient(HttpClient httpClient)
         MergeStateStatus = node.MergeStateStatus,
         SemverLevel = SemverParser.Classify(node.Title),
         DependencyName = SemverParser.ParseDependencyName(node.Title),
+        FromVersion = SemverParser.ParseFromVersion(node.Title),
+        ToVersion = SemverParser.ParseToVersion(node.Title),
     };
 
     private static CiStatus ToCiStatus(string? state) => state switch
@@ -120,6 +147,12 @@ public sealed class GraphQlClient(HttpClient httpClient)
 
     private sealed record PageInfo(bool HasNextPage, string? EndCursor);
 
+    private sealed record PrByNumberResponse(PrByNumberData? Data, IReadOnlyList<GraphQlError>? Errors);
+
+    private sealed record PrByNumberData(RepositoryWithPr? Repository);
+
+    private sealed record RepositoryWithPr(PrNode? PullRequest);
+
     private sealed record PrNode(
         int Number,
         string Title,
@@ -130,7 +163,8 @@ public sealed class GraphQlClient(HttpClient httpClient)
         string? ReviewDecision,
         string MergeStateStatus,
         RepositoryRef Repository,
-        CommitsConnection Commits);
+        CommitsConnection Commits,
+        string? State = null);
 
     private sealed record RepositoryRef(string Name);
 

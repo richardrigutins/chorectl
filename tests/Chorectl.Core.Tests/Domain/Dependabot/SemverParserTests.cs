@@ -51,4 +51,23 @@ public class SemverParserTests
     {
         Assert.Null(SemverParser.ParseDependencyName(title));
     }
+
+    [Theory]
+    [InlineData("Bump firebase-tools from 11.2.0 to 11.3.1", "11.2.0", "11.3.1")]
+    [InlineData("Bump actions/checkout from v3 to v4", "v3", "v4")]
+    [InlineData("Bump the aws-sdk-go group from 1.2.3 to 1.3.0 in /aws-sdk-go", "1.2.3", "1.3.0")]
+    public void ParseFromVersionAndParseToVersion_ExtractVersionsFromDependabotTitle(string title, string expectedFrom, string expectedTo)
+    {
+        Assert.Equal(expectedFrom, SemverParser.ParseFromVersion(title));
+        Assert.Equal(expectedTo, SemverParser.ParseToVersion(title));
+    }
+
+    [Theory]
+    [InlineData("Not a dependabot title at all")]
+    [InlineData("")]
+    public void ParseFromVersionAndParseToVersion_ReturnNull_WhenTitleDoesntMatchDependabotFormat(string title)
+    {
+        Assert.Null(SemverParser.ParseFromVersion(title));
+        Assert.Null(SemverParser.ParseToVersion(title));
+    }
 }
