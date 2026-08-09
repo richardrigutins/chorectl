@@ -15,6 +15,8 @@ public class SemverParserTests
     [InlineData("chore: bump eslint from 7.32.0 to 8.57.0", SemverLevel.Major)] // conventional-commits prefix, lowercase "bump"
     [InlineData("chore(deps): bump js-yaml from 4.3.0 to 4.3.1", SemverLevel.Patch)] // prefix with scope
     [InlineData("[Chore] Bump js-yaml from 4.1.1 to 4.3.0", SemverLevel.Minor)] // bracketed prefix, capital "Bump"
+    [InlineData("Bump gittools/actions from 3 to 4", SemverLevel.Major)] // bare major-only tag, no "v" prefix
+    [InlineData("Bump actions/setup-dotnet from 3 to 3", SemverLevel.Patch)]
     public void Classify_ParsesDependabotTitleAndDiffsVersions(string title, SemverLevel expected)
     {
         Assert.Equal(expected, SemverParser.Classify(title));
