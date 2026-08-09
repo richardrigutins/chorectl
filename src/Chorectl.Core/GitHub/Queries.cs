@@ -48,4 +48,43 @@ public static class Queries
           }
         }
         """;
+
+    /// <summary>
+    /// Re-fetches a single pull request by number, used to re-verify its state immediately
+    /// before acting on it.
+    /// </summary>
+    public const string DependabotPrByNumber = """
+        query($owner: String!, $name: String!, $number: Int!) {
+          repository(owner: $owner, name: $name) {
+            pullRequest(number: $number) {
+              number
+              title
+              url
+              headRefName
+              isDraft
+              updatedAt
+              reviewDecision
+              mergeStateStatus
+              state
+              repository {
+                name
+              }
+              labels(first: 20) {
+                nodes {
+                  name
+                }
+              }
+              commits(last: 1) {
+                nodes {
+                  commit {
+                    statusCheckRollup {
+                      state
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        """;
 }

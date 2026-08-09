@@ -40,6 +40,8 @@ public class GraphQlClientTests
         Assert.Equal("CLEAN", pr.MergeStateStatus);
         Assert.Equal(SemverLevel.Minor, pr.SemverLevel);
         Assert.Equal("firebase-tools", pr.DependencyName);
+        Assert.Equal("11.2.0", pr.FromVersion);
+        Assert.Equal("11.3.1", pr.ToVersion);
     }
 
     [Theory]
@@ -147,6 +149,130 @@ public class GraphQlClientTests
             () => client.FetchDependabotPrsAsync([new RepositoryInfo("octocat", "repo", IsArchived: false, IsFork: false)]));
         Assert.Contains("something went wrong", exception.Message);
     }
+
+    [Fact]
+    public async Task RefetchAsync_WhenPrIsStillOpen_ReturnsUpdatedPr()
+    {
+        var handler = new FakeHttpMessageHandler(SingleByNumberResponse("""
+            "reviewDecision": "APPROVED",
+            "mergeStateStatus": "CLEAN",
+            "state": "OPEN",
+            "commits": { "nodes": [ { "commit": { "statusCheckRollup": { "state": "SUCCESS" } } } ] }
+            """));
+        var client = CreateClient(handler);
+        var pr = SamplePr();
+
+        var refetched = await client.RefetchAsync("octocat", pr);
+
+        Assert.NotNull(refetched);
+        Assert.Equal(42, refetched.Number);
+        Assert.Equal("CLEAN", refetched.MergeStateStatus);
+        Assert.Equal(CiStatus.Passing, refetched.Ci);
+        Assert.Equal(ReviewStatus.Approved, refetched.Review);
+    }
+
+    [Fact]
+    public async Task RefetchAsync_WhenPrIsNoLongerFound_ReturnsNull()
+    {
+        var handler = new FakeHttpMessageHandler("""{ "data": { "repository": { "pullRequest": null } } }""");
+        var client = CreateClient(handler);
+
+        var refetched = await client.RefetchAsync("octocat", SamplePr());
+
+        Assert.Null(refetched);
+    }
+
+    [Fact]
+    public async Task RefetchAsync_WhenPrIsClosed_ReturnsNull()
+    {
+        var handler = new FakeHttpMessageHandler(SingleByNumberResponse("""
+            "reviewDecision": "APPROVED",
+            "mergeStateStatus": "CLEAN",
+            "state": "CLOSED",
+            "commits": { "nodes": [] }
+            """));
+        var client = CreateClient(handler);
+
+        var refetched = await client.RefetchAsync("octocat", SamplePr());
+
+        Assert.Null(refetched);
+    }
+
+    [Fact]
+    public async Task RefetchAsync_WhenStateChangedToConflicting_ReturnsPrWithUpdatedMergeStateStatus()
+    {
+        var handler = new FakeHttpMessageHandler(SingleByNumberResponse("""
+            "reviewDecision": "APPROVED",
+            "mergeStateStatus": "DIRTY",
+            "state": "OPEN",
+            "commits": { "nodes": [ { "commit": { "statusCheckRollup": { "state": "SUCCESS" } } } ] }
+            """));
+        var client = CreateClient(handler);
+
+        var refetched = await client.RefetchAsync("octocat", SamplePr());
+
+        Assert.NotNull(refetched);
+        Assert.Equal("DIRTY", refetched.MergeStateStatus);
+    }
+
+    [Fact]
+    public async Task RefetchAsync_SendsOwnerRepoAndNumberAsVariables()
+    {
+        var handler = new FakeHttpMessageHandler(SingleByNumberResponse("""
+            "reviewDecision": null,
+            "mergeStateStatus": "CLEAN",
+            "state": "OPEN",
+            "commits": { "nodes": [] }
+            """));
+        var client = CreateClient(handler);
+
+        await client.RefetchAsync("octocat", SamplePr());
+
+        var requestBody = Assert.Single(handler.RequestBodies);
+        Assert.Contains("\"owner\":\"octocat\"", requestBody);
+        Assert.Contains("\"name\":\"sample-repo\"", requestBody);
+        Assert.Contains("\"number\":42", requestBody);
+    }
+
+    [Fact]
+    public async Task RefetchAsync_WhenTheApiReturnsErrors_Throws()
+    {
+        var handler = new FakeHttpMessageHandler("""{ "data": null, "errors": [ { "message": "something went wrong" } ] }""");
+        var client = CreateClient(handler);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => client.RefetchAsync("octocat", SamplePr()));
+        Assert.Contains("something went wrong", exception.Message);
+    }
+
+    private static DependabotPr SamplePr() => new()
+    {
+        Repo = "sample-repo",
+        Number = 42,
+        Title = "Bump firebase-tools from 11.2.0 to 11.3.1",
+        Url = "https://github.com/octocat/sample-repo/pull/42",
+        HeadRefName = "dependabot/npm_and_yarn/firebase-tools-11.3.1",
+        MergeStateStatus = "CLEAN",
+    };
+
+    private static string SingleByNumberResponse(string extraFields) => $$"""
+        {
+          "data": {
+            "repository": {
+              "pullRequest": {
+                "number": 42,
+                "title": "Bump firebase-tools from 11.2.0 to 11.3.1",
+                "url": "https://github.com/octocat/sample-repo/pull/42",
+                "headRefName": "dependabot/npm_and_yarn/firebase-tools-11.3.1",
+                "isDraft": false,
+                "updatedAt": "2026-08-01T12:00:00Z",
+                "repository": { "name": "sample-repo" },
+                "labels": { "nodes": [] },
+                {{extraFields}}
+              }
+            }
+          }
+        }
+        """;
 
     private static GraphQlClient CreateClient(FakeHttpMessageHandler handler)
     {

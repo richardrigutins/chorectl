@@ -63,6 +63,26 @@ public static partial class SemverParser
         return match.Success ? match.Groups["dependency"].Value : null;
     }
 
+    /// <summary>
+    /// Extracts the "from" version from a Dependabot PR title. Returns <c>null</c> if the title
+    /// doesn't match Dependabot's format.
+    /// </summary>
+    public static string? ParseFromVersion(string title)
+    {
+        var match = TitlePattern().Match(title);
+        return match.Success ? match.Groups["from"].Value : null;
+    }
+
+    /// <summary>
+    /// Extracts the "to" version from a Dependabot PR title. Returns <c>null</c> if the title
+    /// doesn't match Dependabot's format.
+    /// </summary>
+    public static string? ParseToVersion(string title)
+    {
+        var match = TitlePattern().Match(title);
+        return match.Success ? match.Groups["to"].Value : null;
+    }
+
     private static bool TryParseVersion(string version, out (int Major, int Minor, int Patch) parsed)
     {
         var match = VersionPattern().Match(version);
