@@ -21,7 +21,7 @@ public static partial class SemverParser
     [GeneratedRegex(@"^(?<v>[vV])?(?<major>\d+)(?:\.(?<minor>\d+))?(?:\.(?<patch>\d+))?")]
     private static partial Regex VersionPattern();
 
-    // ponytail: a bare integer is only coerced to a major-only version when it's short enough to
+    // A bare integer is only coerced to a major-only version when it's short enough to
     // plausibly be one; a calver-style date (e.g. "20230101") is always longer than this and
     // stays rejected. Revisit with a real calver detector if this heuristic misfires in practice.
     private const int MaxBareMajorVersionDigits = 3;

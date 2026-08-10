@@ -30,7 +30,7 @@ public static class AppConfiguration
         });
     }
 
-    // ponytail: unknown-command help falls back to root help, not the specific branch the user
+    // Unknown-command help falls back to root help, not the specific branch the user
     // was in (e.g. `dependabot foo` shows root help, not `dependabot --help`) - Spectre.Console.Cli
     // doesn't expose which branch a CommandParseException failed under. Revisit if that's confusing
     // in practice.

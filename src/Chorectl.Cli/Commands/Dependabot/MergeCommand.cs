@@ -18,7 +18,7 @@ public sealed class MergeCommand(
     IAnsiConsole console,
     Func<TimeSpan, CancellationToken, Task>? delay = null) : AsyncCommand
 {
-    // ponytail: hardcoded until `chorectl config` (Phase 2) can supply merge_wait_seconds.
+    // Hardcoded until `chorectl config` (Phase 2) can supply merge_wait_seconds.
     private static readonly TimeSpan MergeWaitBetweenSameRepoMerges = TimeSpan.FromSeconds(30);
 
     private readonly Func<TimeSpan, CancellationToken, Task> delay = delay ?? Task.Delay;
