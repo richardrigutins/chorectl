@@ -14,25 +14,26 @@ public static class ProgressDisplay
         console.WriteLine();
     }
 
-    public static void RenderRepoHeader(IAnsiConsole console, string repo) => console.MarkupLine(repo);
+    public static void RenderRepoHeader(IAnsiConsole console, string repo) => console.MarkupLine(repo.EscapeMarkup());
 
     public static void RenderResult(IAnsiConsole console, MergeResult result)
     {
         var line = $"#{result.Pr.Number}  {Describe(result.Pr)}";
+        var reason = result.Reason?.EscapeMarkup();
 
         console.MarkupLine(result.Outcome switch
         {
             MergeOutcome.Merged => $" [green]✔[/] {line}   merged",
-            MergeOutcome.Skipped => $" [yellow]✖[/] {line}   skipped — {result.Reason}",
-            MergeOutcome.Failed => $" [red]✖[/] {line}   failed — {result.Reason}",
+            MergeOutcome.Skipped => $" [yellow]✖[/] {line}   skipped — {reason}",
+            MergeOutcome.Failed => $" [red]✖[/] {line}   failed — {reason}",
             _ => $" {line}",
         });
     }
 
     private static string Describe(DependabotPr pr) =>
-        pr.DependencyName is not null && pr.FromVersion is not null && pr.ToVersion is not null
+        (pr.DependencyName is not null && pr.FromVersion is not null && pr.ToVersion is not null
             ? $"{pr.DependencyName}  {pr.FromVersion} -> {pr.ToVersion}"
-            : pr.Title;
+            : pr.Title).EscapeMarkup();
 
     public static void RenderWaiting(IAnsiConsole console, TimeSpan wait) =>
         console.MarkupLine($" [grey]⏳ waiting {wait.TotalSeconds:0}s before next merge on this repo...[/]");

@@ -64,6 +64,23 @@ public class GraphQlClientTests
         Assert.Equal(expected, Assert.Single(prs).Ci);
     }
 
+    [Theory]
+    [InlineData("Bump the aws-sdk-go group from 1.2.3 to 1.3.0 in /aws-sdk-go", true)]
+    [InlineData("Bump firebase-tools from 11.2.0 to 11.3.1", false)]
+    public async Task FetchDependabotPrsAsync_MapsGroupedTitleToIsGrouped(string title, bool expected)
+    {
+        var handler = new FakeHttpMessageHandler(SingleNodeResponse("""
+            "reviewDecision": null,
+            "mergeStateStatus": "CLEAN",
+            "commits": { "nodes": [] }
+            """, title: title));
+        var client = CreateClient(handler);
+
+        var prs = await client.FetchDependabotPrsAsync([new RepositoryInfo("octocat", "repo", IsArchived: false, IsFork: false)]);
+
+        Assert.Equal(expected, Assert.Single(prs).IsGrouped);
+    }
+
     [Fact]
     public async Task FetchDependabotPrsAsync_WithNoCommits_MapsToNoChecks()
     {
@@ -280,7 +297,7 @@ public class GraphQlClientTests
         return new GraphQlClient(httpClient);
     }
 
-    private static string SingleNodeResponse(string extraFields, int number = 1, bool hasNextPage = false, string? endCursor = null) => $$"""
+    private static string SingleNodeResponse(string extraFields, int number = 1, bool hasNextPage = false, string? endCursor = null, string title = "Bump some-dependency from 1.0.0 to 1.1.0") => $$"""
         {
           "data": {
             "search": {
@@ -288,7 +305,7 @@ public class GraphQlClientTests
               "nodes": [
                 {
                   "number": {{number}},
-                  "title": "Bump some-dependency from 1.0.0 to 1.1.0",
+                  "title": "{{title}}",
                   "url": "https://github.com/octocat/repo/pull/{{number}}",
                   "headRefName": "dependabot/npm_and_yarn/some-dependency-1.1.0",
                   "isDraft": false,

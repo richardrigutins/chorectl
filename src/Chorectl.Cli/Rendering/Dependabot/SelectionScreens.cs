@@ -23,6 +23,7 @@ public static class SelectionScreens
         foreach (var repoGroup in readyPrs.GroupBy(pr => pr.Repo).OrderBy(g => g.Key))
         {
             var prsInRepo = repoGroup.ToList();
+            var repoLabel = repoGroup.Key.EscapeMarkup();
             var labels = prsInRepo.Select(pr =>
             {
                 var label = Describe(pr);
@@ -30,7 +31,7 @@ public static class SelectionScreens
                 return label;
             }).ToList();
 
-            prompt.AddChoiceGroup(repoGroup.Key, labels);
+            prompt.AddChoiceGroup(repoLabel, labels);
 
             foreach (var pr in prsInRepo.Where(Classifier.DefaultSelected))
             {
@@ -39,7 +40,7 @@ public static class SelectionScreens
 
             if (prsInRepo.TrueForAll(Classifier.DefaultSelected))
             {
-                prompt.Select(repoGroup.Key);
+                prompt.Select(repoLabel);
             }
         }
 
@@ -57,6 +58,6 @@ public static class SelectionScreens
             ? $"{pr.DependencyName}  {pr.FromVersion} -> {pr.ToVersion}"
             : pr.Title;
 
-        return $"#{pr.Number}  {change}  ({pr.SemverLevel.ToString().ToLowerInvariant()})";
+        return $"#{pr.Number}  {change.EscapeMarkup()}  ({pr.SemverLevel.ToString().ToLowerInvariant()})";
     }
 }

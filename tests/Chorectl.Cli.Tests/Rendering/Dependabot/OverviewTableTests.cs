@@ -95,6 +95,17 @@ public class OverviewTableTests
     }
 
     [Fact]
+    public void Render_WithDependencyNameContainingMarkupCharacters_DoesNotThrowAndRendersLiterally()
+    {
+        var console = new TestConsole();
+        var pr = Pr("repo", 1, dependency: "[special]/pkg");
+
+        OverviewTable.Render(console, [pr]);
+
+        Assert.Contains("[special]/pkg", console.Output);
+    }
+
+    [Fact]
     public void Render_WithPrs_PrintsLegend()
     {
         var console = new TestConsole();

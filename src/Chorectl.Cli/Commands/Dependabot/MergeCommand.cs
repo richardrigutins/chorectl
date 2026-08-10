@@ -7,7 +7,7 @@ using Spectre.Console.Cli;
 namespace Chorectl.Cli.Commands.Dependabot;
 
 /// <summary>
-/// <c>chorectl dependabot merge</c> — lets the user select ready Dependabot PRs and merges them,
+/// <c>chorectl dependabot merge</c> - lets the user select ready Dependabot PRs and merges them,
 /// re-verifying each PR's state immediately before merging and waiting between merges on the
 /// same repo.
 /// </summary>
@@ -18,7 +18,7 @@ public sealed class MergeCommand(
     IAnsiConsole console,
     Func<TimeSpan, CancellationToken, Task>? delay = null) : AsyncCommand
 {
-    // ponytail: hardcoded until `chorectl config` (Phase 2) can supply merge_wait_seconds.
+    // Hardcoded until `chorectl config` (Phase 2) can supply merge_wait_seconds.
     private static readonly TimeSpan MergeWaitBetweenSameRepoMerges = TimeSpan.FromSeconds(30);
 
     private readonly Func<TimeSpan, CancellationToken, Task> delay = delay ?? Task.Delay;

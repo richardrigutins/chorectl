@@ -12,7 +12,7 @@ public static partial class SemverParser
     // dependabot.yml commit-message.prefix setting can prepend a conventional-commit-style
     // prefix (e.g. "chore: bump ..." or "[Chore] Bump ...") and lowercase "bump", so the match
     // isn't anchored to the start of the title and is case-insensitive on "bump".
-    [GeneratedRegex(@"bump (?<dependency>.+) from (?<from>\S+) to (?<to>\S+)(?: in .+)?$", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"bump (?<dependency>.+) from (?<from>\S+) to (?<to>\S+)(?: in (?<group>.+))?$", RegexOptions.IgnoreCase)]
     private static partial Regex TitlePattern();
 
     // Leniently coerces version-tag conventions like "v3" (GitHub Actions) to 3.0.0, and bare
@@ -21,7 +21,7 @@ public static partial class SemverParser
     [GeneratedRegex(@"^(?<v>[vV])?(?<major>\d+)(?:\.(?<minor>\d+))?(?:\.(?<patch>\d+))?")]
     private static partial Regex VersionPattern();
 
-    // ponytail: a bare integer is only coerced to a major-only version when it's short enough to
+    // A bare integer is only coerced to a major-only version when it's short enough to
     // plausibly be one; a calver-style date (e.g. "20230101") is always longer than this and
     // stays rejected. Revisit with a real calver detector if this heuristic misfires in practice.
     private const int MaxBareMajorVersionDigits = 3;
@@ -82,6 +82,12 @@ public static partial class SemverParser
         var match = TitlePattern().Match(title);
         return match.Success ? match.Groups["to"].Value : null;
     }
+
+    /// <summary>
+    /// Whether the title is a grouped update ("... in &lt;group&gt;"), which can bundle multiple
+    /// dependencies at different bump levels.
+    /// </summary>
+    public static bool IsGrouped(string title) => TitlePattern().Match(title).Groups["group"].Success;
 
     private static bool TryParseVersion(string version, out (int Major, int Minor, int Patch) parsed)
     {

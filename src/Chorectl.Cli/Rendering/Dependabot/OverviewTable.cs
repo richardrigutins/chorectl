@@ -33,9 +33,9 @@ public static class OverviewTable
         foreach (var pr in prs.OrderBy(p => p.Repo).ThenBy(p => p.Number))
         {
             table.AddRow(
-                pr.Repo,
+                pr.Repo.EscapeMarkup(),
                 pr.Number.ToString(),
-                pr.DependencyName ?? "-",
+                (pr.DependencyName ?? "-").EscapeMarkup(),
                 pr.SemverLevel.ToString().ToLowerInvariant(),
                 CiSymbol(pr.Ci),
                 ReviewSymbol(pr.Review),

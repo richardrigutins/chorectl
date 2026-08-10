@@ -6,7 +6,7 @@ using Spectre.Console.Cli;
 namespace Chorectl.Cli.Commands.Dependabot;
 
 /// <summary>
-/// <c>chorectl dependabot list</c> — prints a status table of every open Dependabot PR across
+/// <c>chorectl dependabot list</c> - prints a status table of every open Dependabot PR across
 /// the user's non-archived, non-fork repos.
 /// </summary>
 public sealed class ListCommand(RestClient restClient, GraphQlClient graphQlClient, IAnsiConsole console) : AsyncCommand
