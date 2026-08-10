@@ -7,7 +7,7 @@ using Spectre.Console.Cli;
 namespace Chorectl.Cli.Commands.Dependabot;
 
 /// <summary>
-/// <c>chorectl dependabot merge</c> — lets the user select ready Dependabot PRs and merges them,
+/// <c>chorectl dependabot merge</c> - lets the user select ready Dependabot PRs and merges them,
 /// re-verifying each PR's state immediately before merging and waiting between merges on the
 /// same repo.
 /// </summary>
