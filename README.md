@@ -4,7 +4,7 @@ A standalone .NET CLI tool for the recurring maintenance chores of owning multip
 
 ## Status
 
-Work in progress, pre-release. No published builds yet - see the [implementation plan](.planning) for current progress.
+Work in progress, pre-release.
 
 ## Prerequisites
 
