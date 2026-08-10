@@ -106,6 +106,18 @@ public class OverviewTableTests
     }
 
     [Fact]
+    public void Render_WithGroupedMultiUpdateTitle_ShowsGroupNameInsteadOfDash()
+    {
+        var console = new TestConsole();
+        const string title = "Bump the angular group with 2 updates";
+        var pr = Pr("repo", 1, dependency: SemverParser.ParseDependencyName(title)!) with { Title = title };
+
+        OverviewTable.Render(console, [pr]);
+
+        Assert.Contains("the angular group (2 updates)", console.Output);
+    }
+
+    [Fact]
     public void Render_WithPrs_PrintsLegend()
     {
         var console = new TestConsole();

@@ -26,6 +26,7 @@ public class SemverParserTests
     [InlineData("Bump django from 20230101 to 20230201")] // date-based version, not semver
     [InlineData("Not a dependabot title at all")]
     [InlineData("")]
+    [InlineData("Bump the angular group with 2 updates")] // grouped multi-dependency update, no single from/to
     public void Classify_ReturnsUnknown_WhenTitleOrVersionsArentParseable(string title)
     {
         Assert.Equal(SemverLevel.Unknown, SemverParser.Classify(title));
@@ -39,6 +40,9 @@ public class SemverParserTests
     [InlineData("chore: bump eslint from 7.32.0 to 8.57.0", "eslint")]
     [InlineData("chore(deps): bump gittools/actions from 3 to 4", "gittools/actions")]
     [InlineData("[Chore] Bump eslint-plugin-github from 5.1.8 to 6.0.0", "eslint-plugin-github")]
+    [InlineData("Bump the angular group with 2 updates", "the angular group (2 updates)")]
+    [InlineData("Bump the angular group across 2 directories with 5 updates", "the angular group (5 updates)")]
+    [InlineData("chore: bump the angular group with 2 updates", "the angular group (2 updates)")] // conventional-commits prefix, lowercase "bump"
     public void ParseDependencyName_ExtractsDependencyFromDependabotTitle(string title, string expected)
     {
         Assert.Equal(expected, SemverParser.ParseDependencyName(title));
@@ -65,6 +69,7 @@ public class SemverParserTests
     [Theory]
     [InlineData("Not a dependabot title at all")]
     [InlineData("")]
+    [InlineData("Bump the angular group with 2 updates")] // grouped multi-dependency update, no single from/to
     public void ParseFromVersionAndParseToVersion_ReturnNull_WhenTitleDoesntMatchDependabotFormat(string title)
     {
         Assert.Null(SemverParser.ParseFromVersion(title));
@@ -76,7 +81,10 @@ public class SemverParserTests
     [InlineData("Bump firebase-tools from 11.2.0 to 11.3.1", false)]
     [InlineData("Not a dependabot title at all", false)]
     [InlineData("", false)]
-    public void IsGrouped_DetectsTheInGroupTitleSuffix(string title, bool expected)
+    [InlineData("Bump the angular group with 2 updates", true)]
+    [InlineData("Bump the angular group across 2 directories with 5 updates", true)]
+    [InlineData("chore: bump the angular group with 2 updates", true)]
+    public void IsGrouped_DetectsGroupedTitles(string title, bool expected)
     {
         Assert.Equal(expected, SemverParser.IsGrouped(title));
     }
