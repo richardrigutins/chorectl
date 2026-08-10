@@ -15,6 +15,12 @@ public static partial class SemverParser
     [GeneratedRegex(@"bump (?<dependency>.+) from (?<from>\S+) to (?<to>\S+)(?: in (?<group>.+))?$", RegexOptions.IgnoreCase)]
     private static partial Regex TitlePattern();
 
+    // Multi-dependency grouped updates have no single from/to version to report, so Dependabot's
+    // title omits them entirely: "Bump the <group> group [across N directories] with <count>
+    // updates[in <dir>]".
+    [GeneratedRegex(@"bump the (?<group>.+?) group(?: across \d+ director(?:y|ies))? with (?<count>\d+) updates?(?: in \S+)?$", RegexOptions.IgnoreCase)]
+    private static partial Regex GroupedTitlePattern();
+
     // Leniently coerces version-tag conventions like "v3" (GitHub Actions) to 3.0.0, and bare
     // major-only tags like "3" (also common for GitHub Actions, e.g. "gittools/actions from 3 to
     // 4") the same way.
@@ -54,13 +60,23 @@ public static partial class SemverParser
     }
 
     /// <summary>
-    /// Extracts the dependency name from a Dependabot PR title. Returns <c>null</c> if the title
-    /// doesn't match Dependabot's format.
+    /// Extracts the dependency name from a Dependabot PR title. For a multi-dependency grouped
+    /// update (no single dependency or version to name), returns the group name and update count
+    /// instead, e.g. "the angular group (2 updates)". Returns <c>null</c> if the title doesn't
+    /// match Dependabot's format at all.
     /// </summary>
     public static string? ParseDependencyName(string title)
     {
         var match = TitlePattern().Match(title);
-        return match.Success ? match.Groups["dependency"].Value : null;
+        if (match.Success)
+        {
+            return match.Groups["dependency"].Value;
+        }
+
+        var groupedMatch = GroupedTitlePattern().Match(title);
+        return groupedMatch.Success
+            ? $"the {groupedMatch.Groups["group"].Value} group ({groupedMatch.Groups["count"].Value} updates)"
+            : null;
     }
 
     /// <summary>
@@ -84,10 +100,12 @@ public static partial class SemverParser
     }
 
     /// <summary>
-    /// Whether the title is a grouped update ("... in &lt;group&gt;"), which can bundle multiple
-    /// dependencies at different bump levels.
+    /// Whether the title is a grouped update ("... in &lt;group&gt;", or a multi-dependency
+    /// "... group with N updates" title), which can bundle multiple dependencies at different
+    /// bump levels.
     /// </summary>
-    public static bool IsGrouped(string title) => TitlePattern().Match(title).Groups["group"].Success;
+    public static bool IsGrouped(string title) =>
+        TitlePattern().Match(title).Groups["group"].Success || GroupedTitlePattern().IsMatch(title);
 
     private static bool TryParseVersion(string version, out (int Major, int Minor, int Patch) parsed)
     {
