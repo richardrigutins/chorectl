@@ -120,6 +120,7 @@ public sealed class GraphQlClient(HttpClient httpClient)
         DependencyName = SemverParser.ParseDependencyName(node.Title),
         FromVersion = SemverParser.ParseFromVersion(node.Title),
         ToVersion = SemverParser.ParseToVersion(node.Title),
+        IsGrouped = SemverParser.IsGrouped(node.Title),
     };
 
     private static CiStatus ToCiStatus(string? state) => state switch

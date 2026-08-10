@@ -70,4 +70,14 @@ public class SemverParserTests
         Assert.Null(SemverParser.ParseFromVersion(title));
         Assert.Null(SemverParser.ParseToVersion(title));
     }
+
+    [Theory]
+    [InlineData("Bump the aws-sdk-go group from 1.2.3 to 1.3.0 in /aws-sdk-go", true)]
+    [InlineData("Bump firebase-tools from 11.2.0 to 11.3.1", false)]
+    [InlineData("Not a dependabot title at all", false)]
+    [InlineData("", false)]
+    public void IsGrouped_DetectsTheInGroupTitleSuffix(string title, bool expected)
+    {
+        Assert.Equal(expected, SemverParser.IsGrouped(title));
+    }
 }
