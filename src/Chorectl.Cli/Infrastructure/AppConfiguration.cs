@@ -1,4 +1,5 @@
 using Chorectl.Cli.Commands.Dependabot;
+using Chorectl.Core.GitHub;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
@@ -45,6 +46,16 @@ public static class AppConfiguration
                 c.ConfigureConsole(console);
             });
             helpApp.Run(["--help"]);
+            return 1;
+        }
+
+        // Spectre.Console.Cli wraps any exception thrown while constructing a command's
+        // dependencies (e.g. a lazily-fetched GitHub token failing) in a CommandRuntimeException
+        // with a generic "Could not resolve type" message, stashing the real exception as
+        // InnerException. Unwrap it so auth failures still show their actionable message.
+        if (ex is CommandRuntimeException { InnerException: GitHubAuthException authException })
+        {
+            console.MarkupLine($"[red]Error:[/] {authException.Message.EscapeMarkup()}");
             return 1;
         }
 
