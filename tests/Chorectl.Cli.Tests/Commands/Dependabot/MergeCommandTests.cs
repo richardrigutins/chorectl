@@ -252,6 +252,37 @@ public class MergeCommandTests
     }
 
     [Fact]
+    public async Task RunAsync_SelectionScreen_DoesNotThrow_WhenTitleContainsMarkupCharacters()
+    {
+        var merger = new FakePullRequestMerger();
+        var (command, console) = CreateCommand(
+            merger,
+            SearchResponse(Node(1, "Bump [special]/pkg from 1.0.0 to 1.0.1")));
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        var exitCode = await command.RunAsync();
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("[special]/pkg", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenMergeFailsWithBracketsInTheMessage_RendersTheReasonWithoutThrowing()
+    {
+        var merger = new FakePullRequestMerger { FailForPrNumbers = { 1 }, FailureMessage = "422 [validation_failed]: merge blocked" };
+        var (command, console) = CreateCommand(
+            merger,
+            SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1")),
+            ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1"));
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        var exitCode = await command.RunAsync();
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("[validation_failed]", console.Output);
+    }
+
+    [Fact]
     public async Task RunAsync_WhenOnePrFailsToMerge_ContinuesWithTheRestOfTheBatch()
     {
         var merger = new FakePullRequestMerger { FailForPrNumbers = { 1 } };
