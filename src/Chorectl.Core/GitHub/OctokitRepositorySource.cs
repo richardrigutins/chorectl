@@ -16,4 +16,19 @@ public sealed class OctokitRepositorySource(IGitHubClient client) : IRepositoryS
             .Select(r => new RepositoryInfo(r.Owner.Login, r.Name, r.Archived, r.Fork))
             .ToList();
     }
+
+    public async Task<RepositoryInfo?> GetOwnedRepositoryAsync(string name)
+    {
+        var currentUser = await client.User.Current();
+
+        try
+        {
+            var repository = await client.Repository.Get(currentUser.Login, name);
+            return new RepositoryInfo(repository.Owner.Login, repository.Name, repository.Archived, repository.Fork);
+        }
+        catch (NotFoundException)
+        {
+            return null;
+        }
+    }
 }

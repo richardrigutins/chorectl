@@ -57,4 +57,63 @@ public class RestClientTests
 
         Assert.Equal(["keep-1", "keep-2"], repos.Select(r => r.Name));
     }
+
+    [Fact]
+    public async Task DiscoverReposAsync_WithRepoName_ReturnsOnlyThatRepo()
+    {
+        var source = new FakeRepositorySource(
+            new RepositoryInfo("octocat", "repo-a", IsArchived: false, IsFork: false),
+            new RepositoryInfo("octocat", "repo-b", IsArchived: false, IsFork: false));
+        var client = new RestClient(source);
+
+        var repos = await client.DiscoverReposAsync("repo-b");
+
+        Assert.Equal(["repo-b"], repos.Select(r => r.Name));
+    }
+
+    [Fact]
+    public async Task DiscoverReposAsync_WithRepoName_DoesNotListEveryRepo()
+    {
+        var source = new FakeRepositorySource(
+            new RepositoryInfo("octocat", "repo-a", IsArchived: false, IsFork: false));
+        var client = new RestClient(source);
+
+        await client.DiscoverReposAsync("repo-a");
+
+        Assert.False(source.GetOwnedRepositoriesAsyncWasCalled);
+    }
+
+    [Fact]
+    public async Task DiscoverReposAsync_WithUnknownRepoName_ThrowsRepositoryNotFoundException()
+    {
+        var source = new FakeRepositorySource(
+            new RepositoryInfo("octocat", "repo-a", IsArchived: false, IsFork: false));
+        var client = new RestClient(source);
+
+        await Assert.ThrowsAsync<RepositoryNotFoundException>(() => client.DiscoverReposAsync("does-not-exist"));
+    }
+
+    [Fact]
+    public async Task DiscoverReposAsync_WithRepoName_WhenRepoIsArchived_ReturnsEmpty()
+    {
+        var source = new FakeRepositorySource(
+            new RepositoryInfo("octocat", "repo-a", IsArchived: true, IsFork: false));
+        var client = new RestClient(source);
+
+        var repos = await client.DiscoverReposAsync("repo-a");
+
+        Assert.Empty(repos);
+    }
+
+    [Fact]
+    public async Task DiscoverReposAsync_WithRepoName_WhenRepoIsFork_ReturnsEmpty()
+    {
+        var source = new FakeRepositorySource(
+            new RepositoryInfo("octocat", "repo-a", IsArchived: false, IsFork: true));
+        var client = new RestClient(source);
+
+        var repos = await client.DiscoverReposAsync("repo-a");
+
+        Assert.Empty(repos);
+    }
 }

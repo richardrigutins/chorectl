@@ -7,9 +7,18 @@ public sealed class RestClient(IRepositorySource repositorySource)
 {
     /// <summary>
     /// Lists the authenticated user's non-archived, non-fork repos (personal account only).
+    /// When <paramref name="repoName"/> is given, looks up just that repo instead of listing
+    /// every repo and filtering afterwards.
     /// </summary>
-    public async Task<IReadOnlyList<RepositoryInfo>> DiscoverReposAsync()
+    public async Task<IReadOnlyList<RepositoryInfo>> DiscoverReposAsync(string? repoName = null)
     {
+        if (repoName is not null)
+        {
+            var repository = await repositorySource.GetOwnedRepositoryAsync(repoName)
+                ?? throw new RepositoryNotFoundException(repoName);
+            return repository is { IsArchived: false, IsFork: false } ? [repository] : [];
+        }
+
         var repositories = await repositorySource.GetOwnedRepositoriesAsync();
 
         return repositories

@@ -8,5 +8,14 @@ internal sealed class FakeRepositorySource : IRepositorySource
 
     public FakeRepositorySource(params RepositoryInfo[] repositories) => this.repositories = repositories;
 
-    public Task<IReadOnlyList<RepositoryInfo>> GetOwnedRepositoriesAsync() => Task.FromResult(repositories);
+    public bool GetOwnedRepositoriesAsyncWasCalled { get; private set; }
+
+    public Task<IReadOnlyList<RepositoryInfo>> GetOwnedRepositoriesAsync()
+    {
+        GetOwnedRepositoriesAsyncWasCalled = true;
+        return Task.FromResult(repositories);
+    }
+
+    public Task<RepositoryInfo?> GetOwnedRepositoryAsync(string name) =>
+        Task.FromResult(repositories.FirstOrDefault(r => r.Name == name));
 }
