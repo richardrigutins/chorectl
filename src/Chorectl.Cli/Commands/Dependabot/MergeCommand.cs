@@ -16,18 +16,21 @@ public sealed class MergeCommand(
     GraphQlClient graphQlClient,
     IPullRequestMerger merger,
     IAnsiConsole console,
-    Func<TimeSpan, CancellationToken, Task>? delay = null) : AsyncCommand
+    Func<TimeSpan, CancellationToken, Task>? delay = null) : AsyncCommand<MergeCommand.Settings>
 {
+    public sealed class Settings : RepoScopedSettings;
+
     // Hardcoded until `chorectl config` (Phase 2) can supply merge_wait_seconds.
     private static readonly TimeSpan MergeWaitBetweenSameRepoMerges = TimeSpan.FromSeconds(30);
 
     private readonly Func<TimeSpan, CancellationToken, Task> delay = delay ?? Task.Delay;
 
-    protected override Task<int> ExecuteAsync(CommandContext context, CancellationToken cancellationToken) => RunAsync(cancellationToken);
+    protected override Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken) =>
+        RunAsync(settings.Repo, cancellationToken);
 
-    public async Task<int> RunAsync(CancellationToken cancellationToken = default)
+    public async Task<int> RunAsync(string? repo = null, CancellationToken cancellationToken = default)
     {
-        var repos = await restClient.DiscoverReposAsync();
+        var repos = await restClient.DiscoverReposAsync(repo);
         var prs = await graphQlClient.FetchDependabotPrsAsync(repos, cancellationToken);
         var ready = prs.Where(Classifier.IsReadyToMerge).OrderBy(p => p.Repo).ThenBy(p => p.Number).ToList();
 

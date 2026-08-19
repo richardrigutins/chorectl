@@ -305,6 +305,47 @@ public class MergeCommandTests
         Assert.Contains("Done: 1 merged, 0 skipped, 1 failed", console.Output);
     }
 
+    [Fact]
+    public async Task RunAsync_WithRepo_ScopesDiscoveryAndFetchToThatRepo()
+    {
+        var merger = new FakePullRequestMerger();
+        var source = new FakeRepositorySource(
+            new RepositoryInfo("octocat", "sample-repo", IsArchived: false, IsFork: false),
+            new RepositoryInfo("octocat", "other-repo", IsArchived: false, IsFork: false));
+        var restClient = new RestClient(source);
+        var handler = new FakeHttpMessageHandler(
+            SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1")),
+            ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1"));
+        var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
+        var console = new TestConsole().Interactive();
+        console.Input.PushKey(ConsoleKey.Enter);
+        var command = new MergeCommand(restClient, graphQlClient, merger, console);
+
+        var exitCode = await command.RunAsync("sample-repo");
+
+        Assert.Equal(0, exitCode);
+        Assert.False(source.GetOwnedRepositoriesAsyncWasCalled);
+        var call = Assert.Single(merger.MergeCalls);
+        Assert.Equal(1, call.Pr.Number);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithUnknownRepo_ThrowsRepositoryNotFoundException()
+    {
+        var merger = new FakePullRequestMerger();
+        var source = new FakeRepositorySource(
+            new RepositoryInfo("octocat", "sample-repo", IsArchived: false, IsFork: false));
+        var restClient = new RestClient(source);
+        var graphQlClient = new GraphQlClient(new HttpClient(new FakeHttpMessageHandler()) { BaseAddress = new Uri("https://api.github.com/") });
+        var console = new TestConsole().Interactive();
+        var command = new MergeCommand(restClient, graphQlClient, merger, console);
+
+        await Assert.ThrowsAsync<RepositoryNotFoundException>(() => command.RunAsync("does-not-exist"));
+
+        Assert.False(source.GetOwnedRepositoriesAsyncWasCalled);
+        Assert.Empty(merger.MergeCalls);
+    }
+
     private static Task NoOpDelay(TimeSpan wait, CancellationToken cancellationToken) => Task.CompletedTask;
 
     private static (MergeCommand Command, TestConsole Console) CreateCommand(
