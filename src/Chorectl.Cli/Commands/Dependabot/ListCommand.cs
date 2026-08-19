@@ -1,4 +1,3 @@
-using System.ComponentModel;
 using Chorectl.Cli.Rendering.Dependabot;
 using Chorectl.Core.GitHub;
 using Spectre.Console;
@@ -12,12 +11,7 @@ namespace Chorectl.Cli.Commands.Dependabot;
 /// </summary>
 public sealed class ListCommand(RestClient restClient, GraphQlClient graphQlClient, IAnsiConsole console) : AsyncCommand<ListCommand.Settings>
 {
-    public sealed class Settings : CommandSettings
-    {
-        [CommandOption("-r|--repo <NAME>")]
-        [Description("Scope to a single repo by name, skipping discovery and fetch for every other repo.")]
-        public string? Repo { get; init; }
-    }
+    public sealed class Settings : RepoScopedSettings;
 
     protected override Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken) => RunAsync(settings.Repo);
 
