@@ -100,12 +100,13 @@ public static partial class SemverParser
     }
 
     /// <summary>
-    /// Whether the title is a grouped update ("... in &lt;group&gt;", or a multi-dependency
-    /// "... group with N updates" title), which can bundle multiple dependencies at different
-    /// bump levels.
+    /// Whether the title is a multi-dependency grouped update ("... group with N updates", no
+    /// individual from/to versions), which can bundle multiple dependencies at different bump
+    /// levels. A title with a single explicit from/to pair and a trailing "... in &lt;group&gt;"
+    /// suffix reports exactly one dependency's bump, even though it came from a group rule, so
+    /// it doesn't carry that bundling risk and isn't considered grouped.
     /// </summary>
-    public static bool IsGrouped(string title) =>
-        TitlePattern().Match(title).Groups["group"].Success || GroupedTitlePattern().IsMatch(title);
+    public static bool IsGrouped(string title) => GroupedTitlePattern().IsMatch(title);
 
     private static bool TryParseVersion(string version, out (int Major, int Minor, int Patch) parsed)
     {
