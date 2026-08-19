@@ -5,11 +5,16 @@ namespace Chorectl.Core.Domain.Dependabot;
 /// </summary>
 public static class Classifier
 {
-    /// <summary>Whether a PR can be merged right now with no further action needed.</summary>
+    /// <summary>
+    /// Whether a PR can be attempted right now. <c>BEHIND</c> doesn't disqualify it - the base
+    /// branch has moved but the PR may merge cleanly regardless, so the merge attempt itself is
+    /// the real test, not a state flag predicting it in advance. Only <c>DIRTY</c> (an actual
+    /// conflict) does.
+    /// </summary>
     public static bool IsReadyToMerge(DependabotPr pr) =>
         pr.Ci == CiStatus.Passing
         && pr.Review != ReviewStatus.ReviewRequired
-        && pr.MergeStateStatus == "CLEAN"
+        && pr.MergeStateStatus != "DIRTY"
         && !pr.IsDraft;
 
     /// <summary>Whether a PR needs a rebase before it can be merged.</summary>

@@ -190,20 +190,134 @@ public class MergeCommandTests
     }
 
     [Fact]
-    public async Task RunAsync_WhenRefetchShowsStateChanged_SkipsWithoutMerging()
+    public async Task RunAsync_WhenRefetchShowsDirty_SkipsImmediatelyWithNoMergeAttemptAndNoPoll()
     {
         var merger = new FakePullRequestMerger();
+        var waits = new List<TimeSpan>();
         var (command, console) = CreateCommand(
             merger,
-            SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1")),
-            ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"));
+            [
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
+            ],
+            delay: (wait, _) =>
+            {
+                waits.Add(wait);
+                return Task.CompletedTask;
+            });
         console.Input.PushKey(ConsoleKey.Enter);
 
         var exitCode = await command.RunAsync();
 
         Assert.Equal(0, exitCode);
         Assert.Empty(merger.MergeCalls);
+        Assert.Empty(waits);
         Assert.Contains("skipped", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenRefetchShowsBehindButNotDirty_MergesDirectlyWithNoWait()
+    {
+        var merger = new FakePullRequestMerger();
+        var waits = new List<TimeSpan>();
+        var (command, console) = CreateCommand(
+            merger,
+            [
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+            ],
+            delay: (wait, _) =>
+            {
+                waits.Add(wait);
+                return Task.CompletedTask;
+            });
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        var exitCode = await command.RunAsync();
+
+        Assert.Equal(0, exitCode);
+        var call = Assert.Single(merger.MergeCalls);
+        Assert.Equal(1, call.Pr.Number);
+        Assert.Empty(waits);
+        Assert.Contains("merged", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenMergeFailsThenPrIsNoLongerBehindAndCiIsPassing_PollsAndRetriesUntilItMerges()
+    {
+        var merger = new FakePullRequestMerger { FailOnceForPrNumbers = { 1 } };
+        var (command, console) = CreateCommand(
+            merger,
+            [
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "CLEAN"),
+            ],
+            delay: NoOpDelay,
+            pollInterval: TimeSpan.FromSeconds(1),
+            pollTimeout: TimeSpan.FromSeconds(5));
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        var exitCode = await command.RunAsync();
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal([1, 1], merger.MergeCalls.Select(c => c.Pr.Number));
+        Assert.Contains("polling", console.Output);
+        Assert.Contains("merged", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenPrBecomesDirtyMidPoll_StopsPollingImmediatelyInsteadOfRunningOutTheTimeout()
+    {
+        var merger = new FakePullRequestMerger { FailForPrNumbers = { 1 } };
+        var waits = new List<TimeSpan>();
+        var (command, console) = CreateCommand(
+            merger,
+            [
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
+            ],
+            delay: (wait, _) =>
+            {
+                waits.Add(wait);
+                return Task.CompletedTask;
+            },
+            pollInterval: TimeSpan.FromSeconds(1),
+            pollTimeout: TimeSpan.FromSeconds(10));
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        var exitCode = await command.RunAsync();
+
+        Assert.Equal(0, exitCode);
+        var wait = Assert.Single(waits);
+        Assert.Equal(TimeSpan.FromSeconds(1), wait);
+        Assert.Contains("became conflicting while waiting", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenPollTimeoutElapsesStillBlocked_SkipsWithReasonInsteadOfForceMerging()
+    {
+        var merger = new FakePullRequestMerger { FailForPrNumbers = { 1 } };
+        var (command, console) = CreateCommand(
+            merger,
+            [
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+            ],
+            delay: NoOpDelay,
+            pollInterval: TimeSpan.FromSeconds(1),
+            pollTimeout: TimeSpan.FromSeconds(2));
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        var exitCode = await command.RunAsync();
+
+        Assert.Equal(0, exitCode);
+        var call = Assert.Single(merger.MergeCalls);
+        Assert.Equal(1, call.Pr.Number);
+        Assert.Contains("still not mergeable after 2s", console.Output);
     }
 
     [Fact]
@@ -224,7 +338,7 @@ public class MergeCommandTests
     }
 
     [Fact]
-    public async Task RunAsync_WaitsBetweenMergesOnTheSameRepoButNotAfterTheLastOne()
+    public async Task RunAsync_NeverWaitsBetweenSuccessfulMergesOnTheSameRepo()
     {
         var merger = new FakePullRequestMerger();
         var waits = new List<TimeSpan>();
@@ -247,8 +361,7 @@ public class MergeCommandTests
         await command.RunAsync();
 
         Assert.Equal(2, merger.MergeCalls.Count);
-        var wait = Assert.Single(waits);
-        Assert.Equal(TimeSpan.FromSeconds(30), wait);
+        Assert.Empty(waits);
     }
 
     [Fact]
@@ -267,42 +380,30 @@ public class MergeCommandTests
     }
 
     [Fact]
-    public async Task RunAsync_WhenMergeFailsWithBracketsInTheMessage_RendersTheReasonWithoutThrowing()
-    {
-        var merger = new FakePullRequestMerger { FailForPrNumbers = { 1 }, FailureMessage = "422 [validation_failed]: merge blocked" };
-        var (command, console) = CreateCommand(
-            merger,
-            SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1")),
-            ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1"));
-        console.Input.PushKey(ConsoleKey.Enter);
-
-        var exitCode = await command.RunAsync();
-
-        Assert.Equal(1, exitCode);
-        Assert.Contains("[validation_failed]", console.Output);
-    }
-
-    [Fact]
-    public async Task RunAsync_WhenOnePrFailsToMerge_ContinuesWithTheRestOfTheBatch()
+    public async Task RunAsync_WhenOnePrsPollTimesOut_ContinuesWithTheRestOfTheBatch()
     {
         var merger = new FakePullRequestMerger { FailForPrNumbers = { 1 } };
         var (command, console) = CreateCommand(
             merger,
             [
                 SearchResponse(
-                    Node(1, "Bump patch-dep-1 from 1.0.0 to 1.0.1"),
+                    Node(1, "Bump patch-dep-1 from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
                     Node(2, "Bump patch-dep-2 from 1.0.0 to 1.0.1")),
-                ByNumberResponse(1, "Bump patch-dep-1 from 1.0.0 to 1.0.1"),
+                ByNumberResponse(1, "Bump patch-dep-1 from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                ByNumberResponse(1, "Bump patch-dep-1 from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
                 ByNumberResponse(2, "Bump patch-dep-2 from 1.0.0 to 1.0.1"),
-            ]);
+            ],
+            delay: NoOpDelay,
+            pollInterval: TimeSpan.FromSeconds(1),
+            pollTimeout: TimeSpan.FromSeconds(1));
         console.Input.PushKey(ConsoleKey.Enter);
 
         var exitCode = await command.RunAsync();
 
-        Assert.Equal(1, exitCode);
+        Assert.Equal(0, exitCode);
         Assert.Equal([1, 2], merger.MergeCalls.Select(c => c.Pr.Number));
-        Assert.Contains("failed", console.Output);
-        Assert.Contains("Done: 1 merged, 0 skipped, 1 failed", console.Output);
+        Assert.Contains("skipped", console.Output);
+        Assert.Contains("Done: 1 merged, 1 skipped, 0 failed", console.Output);
     }
 
     [Fact]
@@ -356,14 +457,16 @@ public class MergeCommandTests
     private static (MergeCommand Command, TestConsole Console) CreateCommand(
         FakePullRequestMerger merger,
         string[] graphQlResponses,
-        Func<TimeSpan, CancellationToken, Task>? delay)
+        Func<TimeSpan, CancellationToken, Task>? delay,
+        TimeSpan? pollInterval = null,
+        TimeSpan? pollTimeout = null)
     {
         var console = new TestConsole().Interactive();
         var restClient = new RestClient(new FakeRepositorySource(
             new RepositoryInfo("octocat", "sample-repo", IsArchived: false, IsFork: false)));
         var handler = new FakeHttpMessageHandler(graphQlResponses);
         var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
-        var command = new MergeCommand(restClient, graphQlClient, merger, console, delay);
+        var command = new MergeCommand(restClient, graphQlClient, merger, console, delay, pollInterval, pollTimeout);
         return (command, console);
     }
 

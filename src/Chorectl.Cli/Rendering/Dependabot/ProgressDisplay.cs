@@ -35,8 +35,8 @@ public static class ProgressDisplay
             ? $"{pr.DependencyName}  {pr.FromVersion} -> {pr.ToVersion}"
             : pr.Title).EscapeMarkup();
 
-    public static void RenderWaiting(IAnsiConsole console, TimeSpan wait) =>
-        console.MarkupLine($" [grey]⏳ waiting {wait.TotalSeconds:0}s before next merge on this repo...[/]");
+    public static void RenderPolling(IAnsiConsole console, DependabotPr pr, TimeSpan timeout) =>
+        console.MarkupLine($" [grey]⏳ #{pr.Number}  {Describe(pr)}   polling (up to {timeout.TotalSeconds:0}s)...[/]");
 
     public static void RenderSummary(IAnsiConsole console, IReadOnlyList<MergeResult> results)
     {

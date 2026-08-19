@@ -8,22 +8,28 @@ namespace Chorectl.Cli.Commands.Dependabot;
 
 /// <summary>
 /// <c>chorectl dependabot merge</c> - lets the user select ready Dependabot PRs and merges them,
-/// re-verifying each PR's state immediately before merging and waiting between merges on the
-/// same repo.
+/// re-verifying each PR's state immediately before merging. A PR that's merely <c>BEHIND</c> is
+/// attempted directly with no wait; only a failed merge attempt falls back to polling until the
+/// PR is no longer behind and CI is passing, or the poll timeout elapses.
 /// </summary>
 public sealed class MergeCommand(
     RestClient restClient,
     GraphQlClient graphQlClient,
     IPullRequestMerger merger,
     IAnsiConsole console,
-    Func<TimeSpan, CancellationToken, Task>? delay = null) : AsyncCommand<MergeCommand.Settings>
+    Func<TimeSpan, CancellationToken, Task>? delay = null,
+    TimeSpan? mergePollInterval = null,
+    TimeSpan? mergePollTimeout = null) : AsyncCommand<MergeCommand.Settings>
 {
     public sealed class Settings : RepoScopedSettings;
 
-    // Hardcoded until `chorectl config` (Phase 2) can supply merge_wait_seconds.
-    private static readonly TimeSpan MergeWaitBetweenSameRepoMerges = TimeSpan.FromSeconds(30);
+    // Hardcoded until `chorectl config` (Phase 2) can supply merge_poll_interval_seconds / merge_poll_timeout_seconds.
+    private static readonly TimeSpan DefaultMergePollInterval = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan DefaultMergePollTimeout = TimeSpan.FromSeconds(120);
 
     private readonly Func<TimeSpan, CancellationToken, Task> delay = delay ?? Task.Delay;
+    private readonly TimeSpan mergePollInterval = mergePollInterval ?? DefaultMergePollInterval;
+    private readonly TimeSpan mergePollTimeout = mergePollTimeout ?? DefaultMergePollTimeout;
 
     protected override Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken) =>
         RunAsync(settings.Repo, cancellationToken);
@@ -66,20 +72,13 @@ public sealed class MergeCommand(
         foreach (var group in selected.GroupBy(pr => pr.Repo))
         {
             var owner = owners[group.Key];
-            var prsInRepo = group.ToList();
             ProgressDisplay.RenderRepoHeader(console, group.Key);
 
-            for (var i = 0; i < prsInRepo.Count; i++)
+            foreach (var pr in group)
             {
-                var result = await MergeOneAsync(owner, prsInRepo[i], cancellationToken);
+                var result = await MergeOneAsync(owner, pr, cancellationToken);
                 results.Add(result);
                 ProgressDisplay.RenderResult(console, result);
-
-                if (result.Outcome == MergeOutcome.Merged && i < prsInRepo.Count - 1)
-                {
-                    ProgressDisplay.RenderWaiting(console, MergeWaitBetweenSameRepoMerges);
-                    await delay(MergeWaitBetweenSameRepoMerges, cancellationToken);
-                }
             }
         }
 
@@ -94,6 +93,8 @@ public sealed class MergeCommand(
             return new MergeResult(pr, MergeOutcome.Skipped, "no longer open");
         }
 
+        // DIRTY (an actual conflict) is the only merge-state value that disqualifies a PR here -
+        // BEHIND is attempted directly, no wait up front (AC-03.2, AC-03.3).
         if (!Classifier.IsReadyToMerge(refetched))
         {
             return new MergeResult(refetched, MergeOutcome.Skipped, DescribeNotReady(refetched));
@@ -104,14 +105,62 @@ public sealed class MergeCommand(
             await merger.MergeAsync(owner, refetched, cancellationToken);
             return new MergeResult(refetched, MergeOutcome.Merged);
         }
-        catch (Exception ex)
+        catch
         {
-            return new MergeResult(refetched, MergeOutcome.Failed, ex.Message);
+            // A failed merge attempt (e.g. branch protection requires being up to date with
+            // base) is the only trigger for polling - covers both "Dependabot is actively
+            // rebasing" and "nothing's rebased it yet", which look identical from the API.
+            return await PollAndRetryMergeAsync(owner, refetched, cancellationToken);
         }
     }
 
+    private async Task<MergeResult> PollAndRetryMergeAsync(string owner, DependabotPr pr, CancellationToken cancellationToken)
+    {
+        ProgressDisplay.RenderPolling(console, pr, mergePollTimeout);
+
+        var current = pr;
+        var elapsed = TimeSpan.Zero;
+
+        while (elapsed < mergePollTimeout)
+        {
+            await delay(mergePollInterval, cancellationToken);
+            elapsed += mergePollInterval;
+
+            var refetched = await graphQlClient.RefetchAsync(owner, current, cancellationToken);
+            if (refetched is null)
+            {
+                return new MergeResult(current, MergeOutcome.Skipped, "no longer open");
+            }
+
+            current = refetched;
+
+            // Stop polling immediately rather than running out the full timeout (AC-03.5).
+            if (current.MergeStateStatus == "DIRTY")
+            {
+                return new MergeResult(current, MergeOutcome.Skipped, "became conflicting while waiting");
+            }
+
+            // Retry once no longer behind *and* CI is passing on the current head - not just
+            // once the conflict state clears (AC-03.4).
+            if (current.MergeStateStatus != "BEHIND" && current.Ci == CiStatus.Passing)
+            {
+                try
+                {
+                    await merger.MergeAsync(owner, current, cancellationToken);
+                    return new MergeResult(current, MergeOutcome.Merged);
+                }
+                catch
+                {
+                    // Keep polling against the same timeout.
+                }
+            }
+        }
+
+        return new MergeResult(current, MergeOutcome.Skipped, $"still not mergeable after {mergePollTimeout.TotalSeconds:0}s");
+    }
+
     private static string DescribeNotReady(DependabotPr pr) =>
-        pr.MergeStateStatus is "DIRTY" or "BEHIND" ? "state changed (now needs rebase)"
+        pr.MergeStateStatus == "DIRTY" ? "conflicting"
         : pr.Ci == CiStatus.Failing ? "state changed (checks now failing)"
         : pr.Ci == CiStatus.Pending ? "state changed (checks still pending)"
         : pr.Review == ReviewStatus.ReviewRequired ? "state changed (now requires review)"
