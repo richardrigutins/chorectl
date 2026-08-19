@@ -57,7 +57,7 @@ public class ListCommandTests
     }
 
     [Fact]
-    public async Task RunAsync_WithUnknownRepo_PrintsEmptyState()
+    public async Task RunAsync_WithUnknownRepo_ThrowsRepositoryNotFoundException()
     {
         var console = new TestConsole();
         var source = new FakeRepositorySource(
@@ -66,11 +66,9 @@ public class ListCommandTests
         var graphQlClient = new GraphQlClient(new HttpClient(new FakeHttpMessageHandler()) { BaseAddress = new Uri("https://api.github.com/") });
         var command = new ListCommand(restClient, graphQlClient, console);
 
-        var exitCode = await command.RunAsync("does-not-exist");
+        await Assert.ThrowsAsync<RepositoryNotFoundException>(() => command.RunAsync("does-not-exist"));
 
-        Assert.Equal(0, exitCode);
         Assert.False(source.GetOwnedRepositoriesAsyncWasCalled);
-        Assert.Contains("No open Dependabot PRs found.", console.Output);
     }
 
     [Fact]

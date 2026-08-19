@@ -84,15 +84,13 @@ public class RestClientTests
     }
 
     [Fact]
-    public async Task DiscoverReposAsync_WithUnknownRepoName_ReturnsEmpty()
+    public async Task DiscoverReposAsync_WithUnknownRepoName_ThrowsRepositoryNotFoundException()
     {
         var source = new FakeRepositorySource(
             new RepositoryInfo("octocat", "repo-a", IsArchived: false, IsFork: false));
         var client = new RestClient(source);
 
-        var repos = await client.DiscoverReposAsync("does-not-exist");
-
-        Assert.Empty(repos);
+        await Assert.ThrowsAsync<RepositoryNotFoundException>(() => client.DiscoverReposAsync("does-not-exist"));
     }
 
     [Fact]

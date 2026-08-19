@@ -14,7 +14,8 @@ public sealed class RestClient(IRepositorySource repositorySource)
     {
         if (repoName is not null)
         {
-            var repository = await repositorySource.GetOwnedRepositoryAsync(repoName);
+            var repository = await repositorySource.GetOwnedRepositoryAsync(repoName)
+                ?? throw new RepositoryNotFoundException(repoName);
             return repository is { IsArchived: false, IsFork: false } ? [repository] : [];
         }
 
