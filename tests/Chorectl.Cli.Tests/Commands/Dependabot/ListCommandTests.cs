@@ -37,6 +37,43 @@ public class ListCommandTests
     }
 
     [Fact]
+    public async Task RunAsync_WithRepo_ScopesDiscoveryAndFetchToThatRepo()
+    {
+        var console = new TestConsole();
+        var source = new FakeRepositorySource(
+            new RepositoryInfo("octocat", "sample-repo", IsArchived: false, IsFork: false),
+            new RepositoryInfo("octocat", "other-repo", IsArchived: false, IsFork: false));
+        var restClient = new RestClient(source);
+        var handler = new FakeHttpMessageHandler(SingleNodeResponse());
+        var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
+        var command = new ListCommand(restClient, graphQlClient, console);
+
+        var exitCode = await command.RunAsync("sample-repo");
+
+        Assert.Equal(0, exitCode);
+        Assert.False(source.GetOwnedRepositoriesAsyncWasCalled);
+        Assert.Contains("sample-repo", console.Output);
+        Assert.Contains("firebase-tools", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithUnknownRepo_PrintsEmptyState()
+    {
+        var console = new TestConsole();
+        var source = new FakeRepositorySource(
+            new RepositoryInfo("octocat", "sample-repo", IsArchived: false, IsFork: false));
+        var restClient = new RestClient(source);
+        var graphQlClient = new GraphQlClient(new HttpClient(new FakeHttpMessageHandler()) { BaseAddress = new Uri("https://api.github.com/") });
+        var command = new ListCommand(restClient, graphQlClient, console);
+
+        var exitCode = await command.RunAsync("does-not-exist");
+
+        Assert.Equal(0, exitCode);
+        Assert.False(source.GetOwnedRepositoriesAsyncWasCalled);
+        Assert.Contains("No open Dependabot PRs found.", console.Output);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_ExcludesArchivedAndForkedRepos()
     {
         var console = new TestConsole();
