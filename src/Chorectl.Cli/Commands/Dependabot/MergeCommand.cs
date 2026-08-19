@@ -105,12 +105,22 @@ public sealed class MergeCommand(
             await merger.MergeAsync(owner, refetched, cancellationToken);
             return new MergeResult(refetched, MergeOutcome.Merged);
         }
-        catch
+        catch (MergeNotReadyException)
         {
-            // A failed merge attempt (e.g. branch protection requires being up to date with
-            // base) is the only trigger for polling - covers both "Dependabot is actively
-            // rebasing" and "nothing's rebased it yet", which look identical from the API.
+            // The only retryable failure - covers both "Dependabot is actively rebasing" and
+            // "nothing's rebased it yet", which look identical from the API (US-12/AC-12.1).
             return await PollAndRetryMergeAsync(owner, refetched, cancellationToken);
+        }
+        catch (GitHubAuthException ex)
+        {
+            // Waiting won't fix a permission problem - skip immediately, no poll (AC-12.2).
+            return new MergeResult(refetched, MergeOutcome.Failed, $"insufficient permission to merge - {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            // Not a per-PR condition but a likely tool bug (404, 422, unrecognized response) -
+            // skip immediately with the raw error surfaced rather than a generic "not ready" (AC-12.3).
+            return new MergeResult(refetched, MergeOutcome.Failed, $"unexpected error, likely a tool bug - {ex.Message}");
         }
     }
 
@@ -152,9 +162,17 @@ public sealed class MergeCommand(
                     await merger.MergeAsync(owner, current, cancellationToken);
                     return new MergeResult(current, MergeOutcome.Merged);
                 }
-                catch
+                catch (MergeNotReadyException)
                 {
                     // Keep polling against the same timeout.
+                }
+                catch (GitHubAuthException ex)
+                {
+                    return new MergeResult(current, MergeOutcome.Failed, $"insufficient permission to merge - {ex.Message}");
+                }
+                catch (Exception ex)
+                {
+                    return new MergeResult(current, MergeOutcome.Failed, $"unexpected error, likely a tool bug - {ex.Message}");
                 }
             }
         }
