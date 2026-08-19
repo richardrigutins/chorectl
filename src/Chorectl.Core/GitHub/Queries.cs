@@ -66,6 +66,7 @@ public static class Queries
               reviewDecision
               mergeStateStatus
               state
+              body
               repository {
                 name
               }

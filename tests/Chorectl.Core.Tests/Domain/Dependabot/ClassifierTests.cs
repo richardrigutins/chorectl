@@ -10,7 +10,8 @@ public class ClassifierTests
         string mergeStateStatus = "CLEAN",
         bool isDraft = false,
         SemverLevel semverLevel = SemverLevel.Patch,
-        bool isGrouped = false) => new()
+        bool isGrouped = false,
+        string? body = null) => new()
         {
             Repo = "repo",
             Number = 1,
@@ -23,6 +24,7 @@ public class ClassifierTests
             IsDraft = isDraft,
             SemverLevel = semverLevel,
             IsGrouped = isGrouped,
+            Body = body,
         };
 
     [Theory]
@@ -33,12 +35,12 @@ public class ClassifierTests
     [InlineData(CiStatus.Pending, ReviewStatus.NotRequired, "CLEAN", false, false)]
     [InlineData(CiStatus.NoChecks, ReviewStatus.NotRequired, "CLEAN", false, false)]
     [InlineData(CiStatus.Passing, ReviewStatus.NotRequired, "DIRTY", false, false)]
-    [InlineData(CiStatus.Passing, ReviewStatus.NotRequired, "BEHIND", false, false)]
-    [InlineData(CiStatus.Passing, ReviewStatus.NotRequired, "BLOCKED", false, false)]
-    [InlineData(CiStatus.Passing, ReviewStatus.NotRequired, "UNSTABLE", false, false)]
-    [InlineData(CiStatus.Passing, ReviewStatus.NotRequired, "UNKNOWN", false, false)]
+    [InlineData(CiStatus.Passing, ReviewStatus.NotRequired, "BEHIND", false, true)]
+    [InlineData(CiStatus.Passing, ReviewStatus.NotRequired, "BLOCKED", false, true)]
+    [InlineData(CiStatus.Passing, ReviewStatus.NotRequired, "UNSTABLE", false, true)]
+    [InlineData(CiStatus.Passing, ReviewStatus.NotRequired, "UNKNOWN", false, true)]
     [InlineData(CiStatus.Passing, ReviewStatus.NotRequired, "CLEAN", true, false)]
-    public void IsReadyToMerge_RequiresPassingCiCleanMergeNoRequiredReviewAndNotDraft(
+    public void IsReadyToMerge_RequiresPassingCiNoRequiredReviewNotDraftAndNotConflicting(
         CiStatus ci, ReviewStatus review, string mergeStateStatus, bool isDraft, bool expected)
     {
         var pr = CreatePr(ci: ci, review: review, mergeStateStatus: mergeStateStatus, isDraft: isDraft);
@@ -92,5 +94,18 @@ public class ClassifierTests
         var pr = CreatePr(mergeStateStatus: "DIRTY", semverLevel: SemverLevel.Patch);
 
         Assert.False(Classifier.DefaultSelected(pr));
+    }
+
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("Just a regular PR description.", false)]
+    [InlineData("Dependabot is rebasing this PR due to a merge conflict.", true)]
+    [InlineData("dependabot IS REBASING THIS pull request right now", true)]
+    [InlineData("Heads up: Dependabot is currently rebasing this PR, changes may be lost.", true)]
+    public void HasRebaseBanner_LooselyMatchesDependabotsRebasingBannerText(string? body, bool expected)
+    {
+        var pr = CreatePr(body: body);
+
+        Assert.Equal(expected, Classifier.HasRebaseBanner(pr));
     }
 }
