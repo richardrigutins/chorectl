@@ -77,7 +77,8 @@ public class SemverParserTests
     }
 
     [Theory]
-    [InlineData("Bump the aws-sdk-go group from 1.2.3 to 1.3.0 in /aws-sdk-go", true)]
+    [InlineData("Bump the aws-sdk-go group from 1.2.3 to 1.3.0 in /aws-sdk-go", false)] // single dependency, explicit versions, just came from a group rule
+    [InlineData("chore: bump firebase from 12.17.0 to 12.17.1 in the firebase group", false)]
     [InlineData("Bump firebase-tools from 11.2.0 to 11.3.1", false)]
     [InlineData("Not a dependabot title at all", false)]
     [InlineData("", false)]
