@@ -365,6 +365,86 @@ public class MergeCommandTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenMergeFailsWithInsufficientPermission_SkipsImmediatelyWithoutPolling()
+    {
+        var merger = new FakePullRequestMerger { FailWithAuthErrorForPrNumbers = { 1 } };
+        var waits = new List<TimeSpan>();
+        var (command, console) = CreateCommand(
+            merger,
+            [
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1"),
+            ],
+            delay: (wait, _) =>
+            {
+                waits.Add(wait);
+                return Task.CompletedTask;
+            });
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        var exitCode = await command.RunAsync();
+
+        Assert.Equal(1, exitCode);
+        var call = Assert.Single(merger.MergeCalls);
+        Assert.Equal(1, call.Pr.Number);
+        Assert.Empty(waits);
+        Assert.Contains("failed — insufficient permission to merge", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenMergeFailsWithUnrecognizedError_SkipsImmediatelyWithRawErrorSurfaced()
+    {
+        var merger = new FakePullRequestMerger
+        {
+            FailWithUnexpectedErrorForPrNumbers = { 1 },
+            FailureMessage = "422 Validation Failed",
+        };
+        var waits = new List<TimeSpan>();
+        var (command, console) = CreateCommand(
+            merger,
+            [
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1"),
+            ],
+            delay: (wait, _) =>
+            {
+                waits.Add(wait);
+                return Task.CompletedTask;
+            });
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        var exitCode = await command.RunAsync();
+
+        Assert.Equal(1, exitCode);
+        Assert.Empty(waits);
+        Assert.Contains("failed — unexpected error, likely a tool bug", console.Output);
+        Assert.Contains("422 Validation Failed", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenPollRetryFailsWithInsufficientPermission_StopsPollingImmediatelyInsteadOfRunningOutTheTimeout()
+    {
+        var merger = new FakePullRequestMerger { FailPollRetryWithAuthErrorForPrNumbers = { 1 } };
+        var (command, console) = CreateCommand(
+            merger,
+            [
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "CLEAN"),
+            ],
+            delay: NoOpDelay,
+            pollInterval: TimeSpan.FromSeconds(1),
+            pollTimeout: TimeSpan.FromSeconds(10));
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        var exitCode = await command.RunAsync();
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal([1, 1], merger.MergeCalls.Select(c => c.Pr.Number));
+        Assert.Contains("failed — insufficient permission to merge", console.Output);
+    }
+
+    [Fact]
     public async Task RunAsync_WhenRefetchShowsPrClosed_SkipsWithoutMerging()
     {
         var merger = new FakePullRequestMerger();
