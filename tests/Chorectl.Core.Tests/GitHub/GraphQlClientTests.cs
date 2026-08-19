@@ -234,6 +234,23 @@ public class GraphQlClientTests
     }
 
     [Fact]
+    public async Task RefetchAsync_MapsBody()
+    {
+        var handler = new FakeHttpMessageHandler(SingleByNumberResponse("""
+            "reviewDecision": null,
+            "mergeStateStatus": "BEHIND",
+            "state": "OPEN",
+            "body": "Dependabot is rebasing this PR due to a merge conflict.",
+            "commits": { "nodes": [] }
+            """));
+        var client = CreateClient(handler);
+
+        var refetched = await client.RefetchAsync("octocat", SamplePr());
+
+        Assert.Equal("Dependabot is rebasing this PR due to a merge conflict.", refetched?.Body);
+    }
+
+    [Fact]
     public async Task RefetchAsync_SendsOwnerRepoAndNumberAsVariables()
     {
         var handler = new FakeHttpMessageHandler(SingleByNumberResponse("""

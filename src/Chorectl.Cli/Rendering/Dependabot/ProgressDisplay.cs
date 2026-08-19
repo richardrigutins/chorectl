@@ -35,8 +35,11 @@ public static class ProgressDisplay
             ? $"{pr.DependencyName}  {pr.FromVersion} -> {pr.ToVersion}"
             : pr.Title).EscapeMarkup();
 
-    public static void RenderPolling(IAnsiConsole console, DependabotPr pr, TimeSpan timeout) =>
-        console.MarkupLine($" [grey]⏳ #{pr.Number}  {Describe(pr)}   polling (up to {timeout.TotalSeconds:0}s)...[/]");
+    public static void RenderPolling(IAnsiConsole console, DependabotPr pr, TimeSpan timeout)
+    {
+        var status = Classifier.HasRebaseBanner(pr) ? "rebase in progress, polling" : "polling";
+        console.MarkupLine($" [grey]⏳ #{pr.Number}  {Describe(pr)}   {status} (up to {timeout.TotalSeconds:0}s)...[/]");
+    }
 
     public static void RenderSummary(IAnsiConsole console, IReadOnlyList<MergeResult> results)
     {

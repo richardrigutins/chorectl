@@ -116,6 +116,9 @@ public sealed class MergeCommand(
 
     private async Task<MergeResult> PollAndRetryMergeAsync(string owner, DependabotPr pr, CancellationToken cancellationToken)
     {
+        // Checked once, off the refetch that already happened before the failed merge attempt -
+        // not re-checked each iteration, so a banner that appears mid-poll won't update this
+        // message. Display-only, so that's an acceptable simplification.
         ProgressDisplay.RenderPolling(console, pr, mergePollTimeout);
 
         var current = pr;

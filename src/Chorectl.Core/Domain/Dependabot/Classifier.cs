@@ -30,4 +30,12 @@ public static class Classifier
         IsReadyToMerge(pr)
         && pr.SemverLevel is SemverLevel.Patch or SemverLevel.Minor
         && !pr.IsGrouped;
+
+    /// <summary>
+    /// Whether the PR body currently carries Dependabot's temporary rebase-in-progress banner.
+    /// Loose substring match, not an exact string, since Dependabot could reword it - display-only,
+    /// doesn't affect poll/timeout behavior.
+    /// </summary>
+    public static bool HasRebaseBanner(DependabotPr pr) =>
+        pr.Body is not null && pr.Body.Contains("rebasing this", StringComparison.OrdinalIgnoreCase);
 }

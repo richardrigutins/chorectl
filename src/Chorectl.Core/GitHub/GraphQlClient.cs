@@ -116,6 +116,7 @@ public sealed class GraphQlClient(HttpClient httpClient)
         Ci = ToCiStatus(node.Commits.Nodes.FirstOrDefault()?.Commit.StatusCheckRollup?.State),
         Review = ToReviewStatus(node.ReviewDecision),
         MergeStateStatus = node.MergeStateStatus,
+        Body = node.Body,
         SemverLevel = SemverParser.Classify(node.Title),
         DependencyName = SemverParser.ParseDependencyName(node.Title),
         FromVersion = SemverParser.ParseFromVersion(node.Title),
@@ -165,7 +166,8 @@ public sealed class GraphQlClient(HttpClient httpClient)
         string MergeStateStatus,
         RepositoryRef Repository,
         CommitsConnection Commits,
-        string? State = null);
+        string? State = null,
+        string? Body = null);
 
     private sealed record RepositoryRef(string Name);
 

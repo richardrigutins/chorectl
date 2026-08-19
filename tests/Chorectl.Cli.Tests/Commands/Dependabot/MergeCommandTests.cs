@@ -267,6 +267,50 @@ public class MergeCommandTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenBodyHasDependabotsRebaseBanner_ShowsRebaseInProgressWhilePolling()
+    {
+        var merger = new FakePullRequestMerger { FailForPrNumbers = { 1 } };
+        var (command, console) = CreateCommand(
+            merger,
+            [
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND",
+                    body: "Dependabot is rebasing this PR due to a merge conflict."),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+            ],
+            delay: NoOpDelay,
+            pollInterval: TimeSpan.FromSeconds(1),
+            pollTimeout: TimeSpan.FromSeconds(1));
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        await command.RunAsync();
+
+        Assert.Contains("rebase in progress, polling", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenBodyHasNoRebaseBanner_ShowsGenericPollingMessage()
+    {
+        var merger = new FakePullRequestMerger { FailForPrNumbers = { 1 } };
+        var (command, console) = CreateCommand(
+            merger,
+            [
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+            ],
+            delay: NoOpDelay,
+            pollInterval: TimeSpan.FromSeconds(1),
+            pollTimeout: TimeSpan.FromSeconds(1));
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        await command.RunAsync();
+
+        Assert.Contains("polling", console.Output);
+        Assert.DoesNotContain("rebase in progress", console.Output);
+    }
+
+    [Fact]
     public async Task RunAsync_WhenPrBecomesDirtyMidPoll_StopsPollingImmediatelyInsteadOfRunningOutTheTimeout()
     {
         var merger = new FakePullRequestMerger { FailForPrNumbers = { 1 } };
@@ -497,7 +541,7 @@ public class MergeCommandTests
         }
         """;
 
-    private static string ByNumberResponse(int number, string title, string mergeStateStatus = "CLEAN", string ci = "SUCCESS", string? review = null, string state = "OPEN") => $$"""
+    private static string ByNumberResponse(int number, string title, string mergeStateStatus = "CLEAN", string ci = "SUCCESS", string? review = null, string state = "OPEN", string? body = null) => $$"""
         {
           "data": {
             "repository": {
@@ -511,6 +555,7 @@ public class MergeCommandTests
                 "reviewDecision": {{(review is null ? "null" : $"\"{review}\"")}},
                 "mergeStateStatus": "{{mergeStateStatus}}",
                 "state": "{{state}}",
+                "body": {{(body is null ? "null" : $"\"{body}\"")}},
                 "repository": { "name": "sample-repo" },
                 "labels": { "nodes": [] },
                 "commits": { "nodes": [ { "commit": { "statusCheckRollup": { "state": "{{ci}}" } } } ] }

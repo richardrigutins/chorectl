@@ -50,6 +50,12 @@ public sealed record DependabotPr
     /// <summary>Raw <c>mergeStateStatus</c> from the GitHub API (CLEAN, DIRTY, BLOCKED, BEHIND, UNSTABLE, UNKNOWN).</summary>
     public required string MergeStateStatus { get; init; }
 
+    /// <summary>
+    /// PR body, only populated by <c>RefetchAsync</c> - checked for Dependabot's temporary
+    /// rebase-in-progress banner (see <see cref="Classifier.HasRebaseBanner"/>).
+    /// </summary>
+    public string? Body { get; init; }
+
     /// <summary>Whether the PR is a draft.</summary>
     public bool IsDraft { get; init; }
 
