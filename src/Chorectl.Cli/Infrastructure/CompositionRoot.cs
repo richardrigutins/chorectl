@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using Chorectl.Core.Config;
 using Chorectl.Core.GitHub;
 using Microsoft.Extensions.DependencyInjection;
 using Octokit;
@@ -20,17 +21,26 @@ public static class CompositionRoot
     public static int Run(IGitHubAuthenticator authenticator, string[] args, IAnsiConsole console)
     {
         var cachingAuthenticator = new CachingGitHubAuthenticator(authenticator);
+        var configLoader = new ConfigLoader(ConfigLoader.DefaultPath);
 
         var services = new ServiceCollection();
 
         services.AddSingleton(console);
+        services.AddSingleton(configLoader);
         services.AddSingleton<IGitHubClient>(_ =>
             new GitHubClient(new Octokit.ProductHeaderValue("chorectl"), new GitHubCredentialStore(cachingAuthenticator)));
         services.AddSingleton<IRepositorySource, OctokitRepositorySource>();
         services.AddSingleton<IPullRequestMerger, OctokitPullRequestMerger>();
         services.AddSingleton<IPullRequestCommenter, OctokitPullRequestCommenter>();
         services.AddSingleton<IPullRequestApprover, OctokitPullRequestApprover>();
-        services.AddSingleton<RestClient>();
+        services.AddSingleton(provider =>
+        {
+            var config = configLoader.Load();
+            return new RestClient(
+                provider.GetRequiredService<IRepositorySource>(),
+                new HashSet<string>(config.ExcludeRepos),
+                config.IncludeForks);
+        });
         services.AddSingleton(_ =>
         {
             var httpClient = new HttpClient(new GitHubAuthenticationHandler(cachingAuthenticator) { InnerHandler = new HttpClientHandler() })

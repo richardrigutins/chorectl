@@ -1,3 +1,4 @@
+using Chorectl.Cli.Commands;
 using Chorectl.Cli.Commands.Dependabot;
 using Chorectl.Core.GitHub;
 using Spectre.Console;
@@ -36,6 +37,19 @@ public static class AppConfiguration
             dependabot.AddCommand<ApproveCommand>("approve")
                 .WithDescription("Select PRs needing approval and approve them.")
                 .WithExample("dependabot", "approve");
+        });
+
+        config.AddBranch("config", configBranch =>
+        {
+            configBranch.SetDescription("View and edit chorectl preferences.");
+
+            configBranch.AddCommand<ConfigGetCommand>("get")
+                .WithDescription("Print the resolved config, with defaults applied.")
+                .WithExample("config", "get");
+
+            configBranch.AddCommand<ConfigSetCommand>("set")
+                .WithDescription("Set a single config value and persist it.")
+                .WithExample("config", "set", "merge_method", "rebase");
         });
     }
 

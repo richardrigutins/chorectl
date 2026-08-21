@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <PackageReference Include="Octokit" Version="14.0.0" />
+    <PackageReference Include="YamlDotNet" Version="16.1.1" />
   </ItemGroup>
 
 </Project>
