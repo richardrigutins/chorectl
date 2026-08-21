@@ -29,6 +29,7 @@ public static class CompositionRoot
         services.AddSingleton<IRepositorySource, OctokitRepositorySource>();
         services.AddSingleton<IPullRequestMerger, OctokitPullRequestMerger>();
         services.AddSingleton<IPullRequestCommenter, OctokitPullRequestCommenter>();
+        services.AddSingleton<IPullRequestApprover, OctokitPullRequestApprover>();
         services.AddSingleton<RestClient>();
         services.AddSingleton(_ =>
         {
