@@ -78,4 +78,32 @@ public static class ProgressDisplay
         console.WriteLine();
         console.MarkupLine($"Done: {requested} requested, {failed} failed");
     }
+
+    public static void RenderApproveHeader(IAnsiConsole console)
+    {
+        console.MarkupLine("Approving selected PRs...");
+        console.WriteLine();
+    }
+
+    public static void RenderApproveResult(IAnsiConsole console, ApproveResult result)
+    {
+        var line = $"#{result.Pr.Number}  {Describe(result.Pr)}";
+        var reason = result.Reason?.EscapeMarkup();
+
+        console.MarkupLine(result.Outcome switch
+        {
+            ApproveOutcome.Approved => $" [green]✔[/] {line}   approved",
+            ApproveOutcome.Failed => $" [red]✖[/] {line}   failed — {reason}",
+            _ => $" {line}",
+        });
+    }
+
+    public static void RenderApproveSummary(IAnsiConsole console, IReadOnlyList<ApproveResult> results)
+    {
+        var approved = results.Count(r => r.Outcome == ApproveOutcome.Approved);
+        var failed = results.Count(r => r.Outcome == ApproveOutcome.Failed);
+
+        console.WriteLine();
+        console.MarkupLine($"Done: {approved} approved, {failed} failed");
+    }
 }

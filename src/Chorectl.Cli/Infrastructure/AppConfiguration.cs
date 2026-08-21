@@ -32,6 +32,10 @@ public static class AppConfiguration
             dependabot.AddCommand<RebaseCommand>("rebase")
                 .WithDescription("Select PRs needing a rebase and request one from Dependabot.")
                 .WithExample("dependabot", "rebase");
+
+            dependabot.AddCommand<ApproveCommand>("approve")
+                .WithDescription("Select PRs needing approval and approve them.")
+                .WithExample("dependabot", "approve");
         });
     }
 

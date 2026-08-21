@@ -24,6 +24,13 @@ public static class SelectionScreens
     public static IReadOnlyList<DependabotPr> PromptRebase(IAnsiConsole console, IReadOnlyList<DependabotPr> needsRebasePrs) =>
         Prompt(console, "Select PRs to rebase [grey](space to toggle, enter to confirm)[/]", needsRebasePrs, pr => !Classifier.HasRebaseBanner(pr));
 
+    /// <summary>
+    /// Prompts the user to select PRs to approve, grouped by repo. Every PR is pre-selected by
+    /// default - there's no risk-tier distinction for approval the way there is for merge.
+    /// </summary>
+    public static IReadOnlyList<DependabotPr> PromptApprove(IAnsiConsole console, IReadOnlyList<DependabotPr> needsApprovalPrs) =>
+        Prompt(console, "Select PRs to approve [grey](space to toggle, enter to confirm)[/]", needsApprovalPrs, _ => true);
+
     private static IReadOnlyList<DependabotPr> Prompt(
         IAnsiConsole console,
         string title,
