@@ -26,6 +26,7 @@ public static class Queries
                 reviewDecision
                 mergeStateStatus
                 mergeable
+                body
                 repository {
                   name
                 }

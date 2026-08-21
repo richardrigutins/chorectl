@@ -28,6 +28,7 @@ public static class CompositionRoot
             new GitHubClient(new Octokit.ProductHeaderValue("chorectl"), new GitHubCredentialStore(cachingAuthenticator)));
         services.AddSingleton<IRepositorySource, OctokitRepositorySource>();
         services.AddSingleton<IPullRequestMerger, OctokitPullRequestMerger>();
+        services.AddSingleton<IPullRequestCommenter, OctokitPullRequestCommenter>();
         services.AddSingleton<RestClient>();
         services.AddSingleton(_ =>
         {

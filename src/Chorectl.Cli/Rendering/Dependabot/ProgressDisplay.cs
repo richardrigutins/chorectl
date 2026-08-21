@@ -50,4 +50,32 @@ public static class ProgressDisplay
         console.WriteLine();
         console.MarkupLine($"Done: {merged} merged, {skipped} skipped, {failed} failed");
     }
+
+    public static void RenderRebaseHeader(IAnsiConsole console)
+    {
+        console.MarkupLine("Requesting rebases for selected PRs...");
+        console.WriteLine();
+    }
+
+    public static void RenderRebaseResult(IAnsiConsole console, RebaseResult result)
+    {
+        var line = $"#{result.Pr.Number}  {Describe(result.Pr)}";
+        var reason = result.Reason?.EscapeMarkup();
+
+        console.MarkupLine(result.Outcome switch
+        {
+            RebaseOutcome.Requested => $" [green]✔[/] {line}   requested",
+            RebaseOutcome.Failed => $" [red]✖[/] {line}   failed — {reason}",
+            _ => $" {line}",
+        });
+    }
+
+    public static void RenderRebaseSummary(IAnsiConsole console, IReadOnlyList<RebaseResult> results)
+    {
+        var requested = results.Count(r => r.Outcome == RebaseOutcome.Requested);
+        var failed = results.Count(r => r.Outcome == RebaseOutcome.Failed);
+
+        console.WriteLine();
+        console.MarkupLine($"Done: {requested} requested, {failed} failed");
+    }
 }

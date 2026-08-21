@@ -28,6 +28,10 @@ public static class AppConfiguration
             dependabot.AddCommand<MergeCommand>("merge")
                 .WithDescription("Select and merge ready Dependabot PRs.")
                 .WithExample("dependabot", "merge");
+
+            dependabot.AddCommand<RebaseCommand>("rebase")
+                .WithDescription("Select PRs needing a rebase and request one from Dependabot.")
+                .WithExample("dependabot", "rebase");
         });
     }
 
