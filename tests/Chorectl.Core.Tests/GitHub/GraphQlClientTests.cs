@@ -83,6 +83,35 @@ public class GraphQlClientTests
     }
 
     [Fact]
+    public async Task FetchDependabotPrsAsync_RequestsTheBodyField()
+    {
+        var emptyResponse = """{ "data": { "search": { "pageInfo": { "hasNextPage": false, "endCursor": null }, "nodes": [] } } }""";
+        var handler = new FakeHttpMessageHandler(emptyResponse);
+        var client = CreateClient(handler);
+
+        await client.FetchDependabotPrsAsync([new RepositoryInfo("octocat", "repo", IsArchived: false, IsFork: false)]);
+
+        var requestBody = Assert.Single(handler.RequestBodies);
+        Assert.Contains("body", requestBody);
+    }
+
+    [Fact]
+    public async Task FetchDependabotPrsAsync_MapsBody()
+    {
+        var handler = new FakeHttpMessageHandler(SingleNodeResponse("""
+            "reviewDecision": null,
+            "mergeStateStatus": "BEHIND",
+            "body": "Dependabot is rebasing this PR due to a merge conflict.",
+            "commits": { "nodes": [] }
+            """));
+        var client = CreateClient(handler);
+
+        var prs = await client.FetchDependabotPrsAsync([new RepositoryInfo("octocat", "repo", IsArchived: false, IsFork: false)]);
+
+        Assert.Equal("Dependabot is rebasing this PR due to a merge conflict.", Assert.Single(prs).Body);
+    }
+
+    [Fact]
     public async Task FetchDependabotPrsAsync_WithNoCommits_MapsToNoChecks()
     {
         var handler = new FakeHttpMessageHandler(SingleNodeResponse("""
