@@ -44,6 +44,17 @@ public class AppConfigurationTests
     }
 
     [Fact]
+    public async Task ConfigHelp_ListsGetAndSetWithDescriptions()
+    {
+        var result = await RunAsync("config", "--help");
+
+        Assert.Contains("get", result.Output);
+        Assert.Contains("Print the resolved config, with defaults applied", result.Output);
+        Assert.Contains("set", result.Output);
+        Assert.Contains("Set a single config value and persist it", result.Output);
+    }
+
+    [Fact]
     public async Task UnknownTopLevelCommand_FallsBackToHelpInsteadOfRawError()
     {
         var result = await RunAsync("frobnicate");

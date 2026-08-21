@@ -116,4 +116,42 @@ public class RestClientTests
 
         Assert.Empty(repos);
     }
+
+    [Fact]
+    public async Task DiscoverReposAsync_ExcludesReposInTheExcludeList()
+    {
+        var source = new FakeRepositorySource(
+            new RepositoryInfo("octocat", "keep-me", IsArchived: false, IsFork: false),
+            new RepositoryInfo("octocat", "exclude-me", IsArchived: false, IsFork: false));
+        var client = new RestClient(source, excludeRepos: new HashSet<string> { "exclude-me" });
+
+        var repos = await client.DiscoverReposAsync();
+
+        Assert.Equal(["keep-me"], repos.Select(r => r.Name));
+    }
+
+    [Fact]
+    public async Task DiscoverReposAsync_WithRepoName_WhenRepoIsExcluded_ReturnsEmpty()
+    {
+        var source = new FakeRepositorySource(
+            new RepositoryInfo("octocat", "excluded-repo", IsArchived: false, IsFork: false));
+        var client = new RestClient(source, excludeRepos: new HashSet<string> { "excluded-repo" });
+
+        var repos = await client.DiscoverReposAsync("excluded-repo");
+
+        Assert.Empty(repos);
+    }
+
+    [Fact]
+    public async Task DiscoverReposAsync_WithIncludeForksTrue_IncludesForkedRepos()
+    {
+        var source = new FakeRepositorySource(
+            new RepositoryInfo("octocat", "original-repo", IsArchived: false, IsFork: false),
+            new RepositoryInfo("octocat", "forked-repo", IsArchived: false, IsFork: true));
+        var client = new RestClient(source, includeForks: true);
+
+        var repos = await client.DiscoverReposAsync();
+
+        Assert.Equal(["original-repo", "forked-repo"], repos.Select(r => r.Name));
+    }
 }
