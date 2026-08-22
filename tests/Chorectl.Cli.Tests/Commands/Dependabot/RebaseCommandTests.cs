@@ -234,6 +234,50 @@ public class RebaseCommandTests
     }
 
     [Fact]
+    public async Task RunAsync_WithVerbose_PrintsDiscoveryAndFetchDiagnostics()
+    {
+        var commenter = new FakePullRequestCommenter();
+        var (command, console) = CreateCommand(
+            commenter,
+            [SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"))]);
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        await command.RunAsync(verbose: true);
+
+        Assert.Contains("Discovered 1 repo(s)", console.Output);
+        Assert.Contains("Fetched 1 Dependabot PR(s)", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithoutVerbose_PrintsNoDiagnostics()
+    {
+        var commenter = new FakePullRequestCommenter();
+        var (command, console) = CreateCommand(
+            commenter,
+            [SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"))]);
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        await command.RunAsync();
+
+        Assert.DoesNotContain("Discovered", console.Output);
+        Assert.DoesNotContain("Fetched", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithVerboseAndJson_SuppressesDiagnosticsToKeepOutputStructured()
+    {
+        var commenter = new FakePullRequestCommenter();
+        var (command, console) = CreateCommand(
+            commenter,
+            [SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"))]);
+
+        await command.RunAsync(yes: true, json: true, verbose: true);
+
+        Assert.DoesNotContain("Discovered", console.Output);
+        Assert.DoesNotContain("Fetched", console.Output);
+    }
+
+    [Fact]
     public async Task RunAsync_WithRepo_ScopesDiscoveryAndFetchToThatRepo()
     {
         var commenter = new FakePullRequestCommenter();

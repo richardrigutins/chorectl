@@ -35,17 +35,22 @@ public sealed class MergeCommand(
     private readonly TimeSpan mergePollTimeout = mergePollTimeout ?? DefaultMergePollTimeout;
 
     protected override Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken) =>
-        RunAsync(settings.Repo, settings.DryRun, settings.Yes, settings.Json, cancellationToken);
+        RunAsync(settings.Repo, settings.DryRun, settings.Yes, settings.Json, settings.Verbose, cancellationToken);
 
     public async Task<int> RunAsync(
         string? repo = null,
         bool dryRun = false,
         bool yes = false,
         bool json = false,
+        bool verbose = false,
         CancellationToken cancellationToken = default)
     {
         var repos = await restClient.DiscoverReposAsync(repo);
+        VerboseLog.Write(console, verbose, json, $"Discovered {repos.Count} repo(s)");
+
         var prs = await graphQlClient.FetchDependabotPrsAsync(repos, cancellationToken);
+        VerboseLog.Write(console, verbose, json, $"Fetched {prs.Count} Dependabot PR(s)");
+
         var ready = prs.Where(Classifier.IsReadyToMerge).OrderBy(p => p.Repo).ThenBy(p => p.Number).ToList();
 
         if (ready.Count == 0)
@@ -70,7 +75,7 @@ public sealed class MergeCommand(
             ProgressDisplay.RenderHeader(console);
         }
 
-        var results = await MergeSelectedAsync(owners, selected, dryRun, json, cancellationToken);
+        var results = await MergeSelectedAsync(owners, selected, dryRun, json, verbose, cancellationToken);
 
         if (json)
         {
@@ -103,6 +108,7 @@ public sealed class MergeCommand(
         IReadOnlyList<DependabotPr> selected,
         bool dryRun,
         bool json,
+        bool verbose,
         CancellationToken cancellationToken)
     {
         var results = new List<MergeResult>();
@@ -117,7 +123,7 @@ public sealed class MergeCommand(
 
             foreach (var pr in group)
             {
-                var result = await MergeOneAsync(owner, pr, dryRun, json, cancellationToken);
+                var result = await MergeOneAsync(owner, pr, dryRun, json, verbose, cancellationToken);
                 results.Add(result);
 
                 // Dry run performs no actual mutation, so nothing is recorded (AC-08.1).
@@ -138,8 +144,9 @@ public sealed class MergeCommand(
         return results;
     }
 
-    private async Task<MergeResult> MergeOneAsync(string owner, DependabotPr pr, bool dryRun, bool json, CancellationToken cancellationToken)
+    private async Task<MergeResult> MergeOneAsync(string owner, DependabotPr pr, bool dryRun, bool json, bool verbose, CancellationToken cancellationToken)
     {
+        VerboseLog.Write(console, verbose, json, $"Refetching state for {owner}/{pr.Repo}#{pr.Number}");
         var refetched = await graphQlClient.RefetchAsync(owner, pr, cancellationToken);
         if (refetched is null)
         {
