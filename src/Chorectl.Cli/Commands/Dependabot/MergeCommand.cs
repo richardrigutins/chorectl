@@ -1,5 +1,6 @@
 using Chorectl.Cli.Rendering;
 using Chorectl.Cli.Rendering.Dependabot;
+using Chorectl.Core.Audit;
 using Chorectl.Core.Domain.Dependabot;
 using Chorectl.Core.GitHub;
 using Spectre.Console;
@@ -18,6 +19,7 @@ public sealed class MergeCommand(
     GraphQlClient graphQlClient,
     IPullRequestMerger merger,
     IAnsiConsole console,
+    IAuditLog auditLog,
     Func<TimeSpan, CancellationToken, Task>? delay = null,
     TimeSpan? mergePollInterval = null,
     TimeSpan? mergePollTimeout = null) : AsyncCommand<MergeCommand.Settings>
@@ -117,6 +119,15 @@ public sealed class MergeCommand(
             {
                 var result = await MergeOneAsync(owner, pr, dryRun, json, cancellationToken);
                 results.Add(result);
+
+                // Dry run performs no actual mutation, so nothing is recorded (AC-08.1).
+                if (!dryRun)
+                {
+                    await auditLog.RecordAsync(
+                        new AuditEntry(DateTimeOffset.UtcNow, result.Pr.Repo, result.Pr.Number, DescribeOutcome(result.Outcome), result.Reason),
+                        cancellationToken);
+                }
+
                 if (!json)
                 {
                     ProgressDisplay.RenderResult(console, result);
@@ -230,6 +241,14 @@ public sealed class MergeCommand(
 
         return new MergeResult(current, MergeOutcome.Skipped, $"still not mergeable after {mergePollTimeout.TotalSeconds:0}s");
     }
+
+    private static string DescribeOutcome(MergeOutcome outcome) => outcome switch
+    {
+        MergeOutcome.Merged => "merged",
+        MergeOutcome.Skipped => "skipped",
+        MergeOutcome.Failed => "failed",
+        _ => throw new ArgumentOutOfRangeException(nameof(outcome)),
+    };
 
     private static string DescribeNotReady(DependabotPr pr) =>
         pr.MergeStateStatus == "DIRTY" ? "conflicting"
