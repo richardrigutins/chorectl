@@ -1,3 +1,4 @@
+using Chorectl.Cli.Rendering;
 using Chorectl.Cli.Rendering.Dependabot;
 using Chorectl.Core.GitHub;
 using Spectre.Console;
@@ -11,17 +12,25 @@ namespace Chorectl.Cli.Commands.Dependabot;
 /// </summary>
 public sealed class ListCommand(RestClient restClient, GraphQlClient graphQlClient, IAnsiConsole console) : AsyncCommand<ListCommand.Settings>
 {
-    public sealed class Settings : RepoScopedSettings;
+    public sealed class Settings : DependabotSettings;
 
-    protected override Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken) => RunAsync(settings.Repo);
+    protected override Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken) =>
+        RunAsync(settings.Repo, settings.Json);
 
-    /// <summary>Discovers repos, fetches open Dependabot PRs, and renders the overview table.</summary>
-    public async Task<int> RunAsync(string? repo = null)
+    /// <summary>Discovers repos, fetches open Dependabot PRs, and renders the overview table (or JSON).</summary>
+    public async Task<int> RunAsync(string? repo = null, bool json = false)
     {
         var repos = await restClient.DiscoverReposAsync(repo);
         var prs = await graphQlClient.FetchDependabotPrsAsync(repos);
 
-        OverviewTable.Render(console, prs);
+        if (json)
+        {
+            JsonOutput.Write(console, prs);
+        }
+        else
+        {
+            OverviewTable.Render(console, prs);
+        }
 
         return 0;
     }

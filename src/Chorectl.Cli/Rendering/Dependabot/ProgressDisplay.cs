@@ -41,7 +41,7 @@ public static class ProgressDisplay
         console.MarkupLine($" [grey]⏳ #{pr.Number}  {Describe(pr)}   {status} (up to {timeout.TotalSeconds:0}s)...[/]");
     }
 
-    public static void RenderSummary(IAnsiConsole console, IReadOnlyList<MergeResult> results)
+    public static void RenderSummary(IAnsiConsole console, IReadOnlyList<MergeResult> results, bool dryRun = false)
     {
         var merged = results.Count(r => r.Outcome == MergeOutcome.Merged);
         var skipped = results.Count(r => r.Outcome == MergeOutcome.Skipped);
@@ -49,6 +49,15 @@ public static class ProgressDisplay
 
         console.WriteLine();
         console.MarkupLine($"Done: {merged} merged, {skipped} skipped, {failed} failed");
+        RenderDryRunNote(console, dryRun);
+    }
+
+    private static void RenderDryRunNote(IAnsiConsole console, bool dryRun)
+    {
+        if (dryRun)
+        {
+            console.MarkupLine("[grey]dry run — no changes made[/]");
+        }
     }
 
     public static void RenderRebaseHeader(IAnsiConsole console)
@@ -70,13 +79,14 @@ public static class ProgressDisplay
         });
     }
 
-    public static void RenderRebaseSummary(IAnsiConsole console, IReadOnlyList<RebaseResult> results)
+    public static void RenderRebaseSummary(IAnsiConsole console, IReadOnlyList<RebaseResult> results, bool dryRun = false)
     {
         var requested = results.Count(r => r.Outcome == RebaseOutcome.Requested);
         var failed = results.Count(r => r.Outcome == RebaseOutcome.Failed);
 
         console.WriteLine();
         console.MarkupLine($"Done: {requested} requested, {failed} failed");
+        RenderDryRunNote(console, dryRun);
     }
 
     public static void RenderApproveHeader(IAnsiConsole console)
@@ -98,12 +108,13 @@ public static class ProgressDisplay
         });
     }
 
-    public static void RenderApproveSummary(IAnsiConsole console, IReadOnlyList<ApproveResult> results)
+    public static void RenderApproveSummary(IAnsiConsole console, IReadOnlyList<ApproveResult> results, bool dryRun = false)
     {
         var approved = results.Count(r => r.Outcome == ApproveOutcome.Approved);
         var failed = results.Count(r => r.Outcome == ApproveOutcome.Failed);
 
         console.WriteLine();
         console.MarkupLine($"Done: {approved} approved, {failed} failed");
+        RenderDryRunNote(console, dryRun);
     }
 }

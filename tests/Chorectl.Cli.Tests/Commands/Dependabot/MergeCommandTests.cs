@@ -571,6 +571,89 @@ public class MergeCommandTests
         Assert.Empty(merger.MergeCalls);
     }
 
+    [Fact]
+    public async Task RunAsync_WithYes_SkipsSelectionScreenAndActsOnDefaultSelectedSet()
+    {
+        var merger = new FakePullRequestMerger();
+        var (command, console) = CreateCommand(
+            merger,
+            SearchResponse(
+                Node(1, "Bump patch-dep from 1.0.0 to 1.0.1"),
+                Node(2, "Bump major-dep from 1.0.0 to 2.0.0")),
+            ByNumberResponse(1, "Bump patch-dep from 1.0.0 to 1.0.1"));
+
+        var exitCode = await command.RunAsync(yes: true);
+
+        Assert.Equal(0, exitCode);
+        var call = Assert.Single(merger.MergeCalls);
+        Assert.Equal(1, call.Pr.Number);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithDryRun_ShowsSelectionAndSummaryButMergesNothing()
+    {
+        var merger = new FakePullRequestMerger();
+        var (command, console) = CreateCommand(
+            merger,
+            SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1")),
+            ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1"));
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        var exitCode = await command.RunAsync(dryRun: true);
+
+        Assert.Equal(0, exitCode);
+        Assert.Empty(merger.MergeCalls);
+        Assert.Contains("merged", console.Output);
+        Assert.Contains("dry run — no changes made", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithYesAndJson_ActsWithoutPromptingAndPrintsStructuredResults()
+    {
+        var merger = new FakePullRequestMerger();
+        var (command, console) = CreateCommand(
+            merger,
+            SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1")),
+            ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1"));
+
+        var exitCode = await command.RunAsync(yes: true, json: true);
+
+        Assert.Equal(0, exitCode);
+        var call = Assert.Single(merger.MergeCalls);
+        Assert.Equal(1, call.Pr.Number);
+        Assert.Contains("\"outcome\": \"merged\"", console.Output);
+        Assert.Contains("\"dryRun\": false", console.Output);
+        Assert.DoesNotContain("Merging selected PRs", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithDryRunAndYes_ActsOnDefaultSetWithZeroMutations()
+    {
+        var merger = new FakePullRequestMerger();
+        var (command, console) = CreateCommand(
+            merger,
+            SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1")),
+            ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1"));
+
+        var exitCode = await command.RunAsync(dryRun: true, yes: true);
+
+        Assert.Equal(0, exitCode);
+        Assert.Empty(merger.MergeCalls);
+        Assert.Contains("Done: 1 merged, 0 skipped, 0 failed", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithJsonAndNoPrsReady_PrintsEmptyStructuredResults()
+    {
+        var merger = new FakePullRequestMerger();
+        var (command, console) = CreateCommand(merger, SearchResponse());
+
+        var exitCode = await command.RunAsync(json: true);
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("\"results\": []", console.Output);
+    }
+
     private static Task NoOpDelay(TimeSpan wait, CancellationToken cancellationToken) => Task.CompletedTask;
 
     private static (MergeCommand Command, TestConsole Console) CreateCommand(

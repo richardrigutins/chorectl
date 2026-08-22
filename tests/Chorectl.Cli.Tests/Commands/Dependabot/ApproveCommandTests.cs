@@ -182,6 +182,55 @@ public class ApproveCommandTests
         Assert.Empty(approver.ApproveCalls);
     }
 
+    [Fact]
+    public async Task RunAsync_WithYes_SkipsSelectionScreenAndApprovesAll()
+    {
+        var approver = new FakePullRequestApprover();
+        var (command, console) = CreateCommand(
+            approver,
+            SearchResponse(
+                Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"),
+                Node(2, "Bump right-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED")));
+
+        var exitCode = await command.RunAsync(yes: true);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal([1, 2], approver.ApproveCalls.Select(c => c.Pr.Number).Order());
+    }
+
+    [Fact]
+    public async Task RunAsync_WithDryRun_ShowsSummaryButApprovesNothing()
+    {
+        var approver = new FakePullRequestApprover();
+        var (command, console) = CreateCommand(
+            approver,
+            SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED")));
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        var exitCode = await command.RunAsync(dryRun: true);
+
+        Assert.Equal(0, exitCode);
+        Assert.Empty(approver.ApproveCalls);
+        Assert.Contains("approved", console.Output);
+        Assert.Contains("dry run — no changes made", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithJson_PrintsStructuredResultsWithoutPrompting()
+    {
+        var approver = new FakePullRequestApprover();
+        var (command, console) = CreateCommand(
+            approver,
+            SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED")));
+
+        var exitCode = await command.RunAsync(json: true);
+
+        Assert.Equal(0, exitCode);
+        var call = Assert.Single(approver.ApproveCalls);
+        Assert.Equal(1, call.Pr.Number);
+        Assert.Contains("\"outcome\": \"approved\"", console.Output);
+    }
+
     private static (ApproveCommand Command, TestConsole Console) CreateCommand(
         FakePullRequestApprover approver,
         params string[] graphQlResponses)
