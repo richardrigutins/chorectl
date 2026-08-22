@@ -7,6 +7,60 @@ namespace Chorectl.Cli.Tests.Commands.Dependabot;
 public class ApproveCommandTests
 {
     [Fact]
+    public async Task RunAsync_WhenPrIsApproved_RecordsAnApprovedAuditEntry()
+    {
+        var approver = new FakePullRequestApprover();
+        var auditLog = new FakeAuditLog();
+        var (command, console) = CreateCommand(
+            approver,
+            [SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"))],
+            auditLog: auditLog);
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        await command.RunAsync();
+
+        var entry = Assert.Single(auditLog.Entries);
+        Assert.Equal("sample-repo", entry.Repo);
+        Assert.Equal(1, entry.PrNumber);
+        Assert.Equal("approved", entry.Action);
+        Assert.Null(entry.Reason);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenApproveFails_RecordsAFailedAuditEntryWithReason()
+    {
+        var approver = new FakePullRequestApprover { FailWithAuthErrorForPrNumbers = { 1 } };
+        var auditLog = new FakeAuditLog();
+        var (command, console) = CreateCommand(
+            approver,
+            [SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"))],
+            auditLog: auditLog);
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        await command.RunAsync();
+
+        var entry = Assert.Single(auditLog.Entries);
+        Assert.Equal("failed", entry.Action);
+        Assert.Contains("insufficient permission to review", entry.Reason);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithDryRun_RecordsNoAuditEntries()
+    {
+        var approver = new FakePullRequestApprover();
+        var auditLog = new FakeAuditLog();
+        var (command, console) = CreateCommand(
+            approver,
+            [SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"))],
+            auditLog: auditLog);
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        await command.RunAsync(dryRun: true);
+
+        Assert.Empty(auditLog.Entries);
+    }
+
+    [Fact]
     public async Task RunAsync_WithNoPrsNeedingApproval_PrintsMessageAndApprovesNothing()
     {
         var approver = new FakePullRequestApprover();
@@ -155,7 +209,7 @@ public class ApproveCommandTests
         var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
         var console = new TestConsole().Interactive();
         console.Input.PushKey(ConsoleKey.Enter);
-        var command = new ApproveCommand(restClient, graphQlClient, approver, console);
+        var command = new ApproveCommand(restClient, graphQlClient, approver, console, new FakeAuditLog());
 
         var exitCode = await command.RunAsync("sample-repo");
 
@@ -174,7 +228,7 @@ public class ApproveCommandTests
         var restClient = new RestClient(source);
         var graphQlClient = new GraphQlClient(new HttpClient(new FakeHttpMessageHandler()) { BaseAddress = new Uri("https://api.github.com/") });
         var console = new TestConsole().Interactive();
-        var command = new ApproveCommand(restClient, graphQlClient, approver, console);
+        var command = new ApproveCommand(restClient, graphQlClient, approver, console, new FakeAuditLog());
 
         await Assert.ThrowsAsync<RepositoryNotFoundException>(() => command.RunAsync("does-not-exist"));
 
@@ -233,14 +287,20 @@ public class ApproveCommandTests
 
     private static (ApproveCommand Command, TestConsole Console) CreateCommand(
         FakePullRequestApprover approver,
-        params string[] graphQlResponses)
+        params string[] graphQlResponses) =>
+        CreateCommand(approver, graphQlResponses, auditLog: null);
+
+    private static (ApproveCommand Command, TestConsole Console) CreateCommand(
+        FakePullRequestApprover approver,
+        string[] graphQlResponses,
+        FakeAuditLog? auditLog)
     {
         var console = new TestConsole().Interactive();
         var restClient = new RestClient(new FakeRepositorySource(
             new RepositoryInfo("octocat", "sample-repo", IsArchived: false, IsFork: false)));
         var handler = new FakeHttpMessageHandler(graphQlResponses);
         var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
-        var command = new ApproveCommand(restClient, graphQlClient, approver, console);
+        var command = new ApproveCommand(restClient, graphQlClient, approver, console, auditLog ?? new FakeAuditLog());
         return (command, console);
     }
 

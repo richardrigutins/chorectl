@@ -1,5 +1,6 @@
 using Chorectl.Cli.Rendering;
 using Chorectl.Cli.Rendering.Dependabot;
+using Chorectl.Core.Audit;
 using Chorectl.Core.Domain.Dependabot;
 using Chorectl.Core.GitHub;
 using Spectre.Console;
@@ -16,7 +17,8 @@ public sealed class ApproveCommand(
     RestClient restClient,
     GraphQlClient graphQlClient,
     IPullRequestApprover approver,
-    IAnsiConsole console) : AsyncCommand<ApproveCommand.Settings>
+    IAnsiConsole console,
+    IAuditLog auditLog) : AsyncCommand<ApproveCommand.Settings>
 {
     public sealed class Settings : ActionSettings;
 
@@ -105,6 +107,15 @@ public sealed class ApproveCommand(
             {
                 var result = await ApproveOneAsync(owner, pr, dryRun, cancellationToken);
                 results.Add(result);
+
+                // Dry run performs no actual mutation, so nothing is recorded (AC-08.1).
+                if (!dryRun)
+                {
+                    await auditLog.RecordAsync(
+                        new AuditEntry(DateTimeOffset.UtcNow, result.Pr.Repo, result.Pr.Number, DescribeOutcome(result.Outcome), result.Reason),
+                        cancellationToken);
+                }
+
                 if (!json)
                 {
                     ProgressDisplay.RenderApproveResult(console, result);
@@ -137,4 +148,11 @@ public sealed class ApproveCommand(
             return new ApproveResult(pr, ApproveOutcome.Failed, $"unexpected error, likely a tool bug - {ex.Message}");
         }
     }
+
+    private static string DescribeOutcome(ApproveOutcome outcome) => outcome switch
+    {
+        ApproveOutcome.Approved => "approved",
+        ApproveOutcome.Failed => "failed",
+        _ => throw new ArgumentOutOfRangeException(nameof(outcome)),
+    };
 }

@@ -1,5 +1,6 @@
 using Chorectl.Cli.Rendering;
 using Chorectl.Cli.Rendering.Dependabot;
+using Chorectl.Core.Audit;
 using Chorectl.Core.Domain.Dependabot;
 using Chorectl.Core.GitHub;
 using Spectre.Console;
@@ -16,7 +17,8 @@ public sealed class RebaseCommand(
     RestClient restClient,
     GraphQlClient graphQlClient,
     IPullRequestCommenter commenter,
-    IAnsiConsole console) : AsyncCommand<RebaseCommand.Settings>
+    IAnsiConsole console,
+    IAuditLog auditLog) : AsyncCommand<RebaseCommand.Settings>
 {
     public sealed class Settings : ActionSettings;
 
@@ -107,6 +109,15 @@ public sealed class RebaseCommand(
             {
                 var result = await RequestOneAsync(owner, pr, dryRun, cancellationToken);
                 results.Add(result);
+
+                // Dry run performs no actual mutation, so nothing is recorded (AC-08.1).
+                if (!dryRun)
+                {
+                    await auditLog.RecordAsync(
+                        new AuditEntry(DateTimeOffset.UtcNow, result.Pr.Repo, result.Pr.Number, DescribeOutcome(result.Outcome), result.Reason),
+                        cancellationToken);
+                }
+
                 if (!json)
                 {
                     ProgressDisplay.RenderRebaseResult(console, result);
@@ -139,4 +150,11 @@ public sealed class RebaseCommand(
             return new RebaseResult(pr, RebaseOutcome.Failed, $"unexpected error, likely a tool bug - {ex.Message}");
         }
     }
+
+    private static string DescribeOutcome(RebaseOutcome outcome) => outcome switch
+    {
+        RebaseOutcome.Requested => "rebase-requested",
+        RebaseOutcome.Failed => "failed",
+        _ => throw new ArgumentOutOfRangeException(nameof(outcome)),
+    };
 }

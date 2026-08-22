@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using Chorectl.Core.Audit;
 using Chorectl.Core.Config;
 using Chorectl.Core.GitHub;
 using Microsoft.Extensions.DependencyInjection;
@@ -33,6 +34,7 @@ public static class CompositionRoot
         services.AddSingleton<IPullRequestMerger, OctokitPullRequestMerger>();
         services.AddSingleton<IPullRequestCommenter, OctokitPullRequestCommenter>();
         services.AddSingleton<IPullRequestApprover, OctokitPullRequestApprover>();
+        services.AddSingleton<IAuditLog>(new AuditLog(AuditLog.DefaultPath));
         services.AddSingleton(provider =>
         {
             var config = configLoader.Load();

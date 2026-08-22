@@ -7,6 +7,60 @@ namespace Chorectl.Cli.Tests.Commands.Dependabot;
 public class RebaseCommandTests
 {
     [Fact]
+    public async Task RunAsync_WhenRebaseIsRequested_RecordsARebaseRequestedAuditEntry()
+    {
+        var commenter = new FakePullRequestCommenter();
+        var auditLog = new FakeAuditLog();
+        var (command, console) = CreateCommand(
+            commenter,
+            [SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"))],
+            auditLog: auditLog);
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        await command.RunAsync();
+
+        var entry = Assert.Single(auditLog.Entries);
+        Assert.Equal("sample-repo", entry.Repo);
+        Assert.Equal(1, entry.PrNumber);
+        Assert.Equal("rebase-requested", entry.Action);
+        Assert.Null(entry.Reason);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenCommentFails_RecordsAFailedAuditEntryWithReason()
+    {
+        var commenter = new FakePullRequestCommenter { FailWithAuthErrorForPrNumbers = { 1 } };
+        var auditLog = new FakeAuditLog();
+        var (command, console) = CreateCommand(
+            commenter,
+            [SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"))],
+            auditLog: auditLog);
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        await command.RunAsync();
+
+        var entry = Assert.Single(auditLog.Entries);
+        Assert.Equal("failed", entry.Action);
+        Assert.Contains("insufficient permission to comment", entry.Reason);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithDryRun_RecordsNoAuditEntries()
+    {
+        var commenter = new FakePullRequestCommenter();
+        var auditLog = new FakeAuditLog();
+        var (command, console) = CreateCommand(
+            commenter,
+            [SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"))],
+            auditLog: auditLog);
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        await command.RunAsync(dryRun: true);
+
+        Assert.Empty(auditLog.Entries);
+    }
+
+    [Fact]
     public async Task RunAsync_WithNoPrsNeedingRebase_PrintsMessageAndRequestsNothing()
     {
         var commenter = new FakePullRequestCommenter();
@@ -192,7 +246,7 @@ public class RebaseCommandTests
         var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
         var console = new TestConsole().Interactive();
         console.Input.PushKey(ConsoleKey.Enter);
-        var command = new RebaseCommand(restClient, graphQlClient, commenter, console);
+        var command = new RebaseCommand(restClient, graphQlClient, commenter, console, new FakeAuditLog());
 
         var exitCode = await command.RunAsync("sample-repo");
 
@@ -211,7 +265,7 @@ public class RebaseCommandTests
         var restClient = new RestClient(source);
         var graphQlClient = new GraphQlClient(new HttpClient(new FakeHttpMessageHandler()) { BaseAddress = new Uri("https://api.github.com/") });
         var console = new TestConsole().Interactive();
-        var command = new RebaseCommand(restClient, graphQlClient, commenter, console);
+        var command = new RebaseCommand(restClient, graphQlClient, commenter, console, new FakeAuditLog());
 
         await Assert.ThrowsAsync<RepositoryNotFoundException>(() => command.RunAsync("does-not-exist"));
 
@@ -287,14 +341,20 @@ public class RebaseCommandTests
 
     private static (RebaseCommand Command, TestConsole Console) CreateCommand(
         FakePullRequestCommenter commenter,
-        params string[] graphQlResponses)
+        params string[] graphQlResponses) =>
+        CreateCommand(commenter, graphQlResponses, auditLog: null);
+
+    private static (RebaseCommand Command, TestConsole Console) CreateCommand(
+        FakePullRequestCommenter commenter,
+        string[] graphQlResponses,
+        FakeAuditLog? auditLog)
     {
         var console = new TestConsole().Interactive();
         var restClient = new RestClient(new FakeRepositorySource(
             new RepositoryInfo("octocat", "sample-repo", IsArchived: false, IsFork: false)));
         var handler = new FakeHttpMessageHandler(graphQlResponses);
         var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
-        var command = new RebaseCommand(restClient, graphQlClient, commenter, console);
+        var command = new RebaseCommand(restClient, graphQlClient, commenter, console, auditLog ?? new FakeAuditLog());
         return (command, console);
     }
 

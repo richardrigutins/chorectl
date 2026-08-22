@@ -7,6 +7,72 @@ namespace Chorectl.Cli.Tests.Commands.Dependabot;
 public class MergeCommandTests
 {
     [Fact]
+    public async Task RunAsync_WhenPrIsMerged_RecordsAMergedAuditEntry()
+    {
+        var merger = new FakePullRequestMerger();
+        var auditLog = new FakeAuditLog();
+        var (command, console) = CreateCommand(
+            merger,
+            [
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1"),
+            ],
+            delay: NoOpDelay,
+            auditLog: auditLog);
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        await command.RunAsync();
+
+        var entry = Assert.Single(auditLog.Entries);
+        Assert.Equal("sample-repo", entry.Repo);
+        Assert.Equal(1, entry.PrNumber);
+        Assert.Equal("merged", entry.Action);
+        Assert.Null(entry.Reason);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenPrIsSkipped_RecordsASkippedAuditEntryWithReason()
+    {
+        var merger = new FakePullRequestMerger();
+        var auditLog = new FakeAuditLog();
+        var (command, console) = CreateCommand(
+            merger,
+            [
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
+            ],
+            delay: NoOpDelay,
+            auditLog: auditLog);
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        await command.RunAsync();
+
+        var entry = Assert.Single(auditLog.Entries);
+        Assert.Equal("skipped", entry.Action);
+        Assert.Equal("conflicting", entry.Reason);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithDryRun_RecordsNoAuditEntries()
+    {
+        var merger = new FakePullRequestMerger();
+        var auditLog = new FakeAuditLog();
+        var (command, console) = CreateCommand(
+            merger,
+            [
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1"),
+            ],
+            delay: NoOpDelay,
+            auditLog: auditLog);
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        await command.RunAsync(dryRun: true);
+
+        Assert.Empty(auditLog.Entries);
+    }
+
+    [Fact]
     public async Task RunAsync_WithNoReadyPrs_PrintsMessageAndMergesNothing()
     {
         var merger = new FakePullRequestMerger();
@@ -544,7 +610,7 @@ public class MergeCommandTests
         var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
         var console = new TestConsole().Interactive();
         console.Input.PushKey(ConsoleKey.Enter);
-        var command = new MergeCommand(restClient, graphQlClient, merger, console);
+        var command = new MergeCommand(restClient, graphQlClient, merger, console, new FakeAuditLog());
 
         var exitCode = await command.RunAsync("sample-repo");
 
@@ -563,7 +629,7 @@ public class MergeCommandTests
         var restClient = new RestClient(source);
         var graphQlClient = new GraphQlClient(new HttpClient(new FakeHttpMessageHandler()) { BaseAddress = new Uri("https://api.github.com/") });
         var console = new TestConsole().Interactive();
-        var command = new MergeCommand(restClient, graphQlClient, merger, console);
+        var command = new MergeCommand(restClient, graphQlClient, merger, console, new FakeAuditLog());
 
         await Assert.ThrowsAsync<RepositoryNotFoundException>(() => command.RunAsync("does-not-exist"));
 
@@ -666,14 +732,15 @@ public class MergeCommandTests
         string[] graphQlResponses,
         Func<TimeSpan, CancellationToken, Task>? delay,
         TimeSpan? pollInterval = null,
-        TimeSpan? pollTimeout = null)
+        TimeSpan? pollTimeout = null,
+        FakeAuditLog? auditLog = null)
     {
         var console = new TestConsole().Interactive();
         var restClient = new RestClient(new FakeRepositorySource(
             new RepositoryInfo("octocat", "sample-repo", IsArchived: false, IsFork: false)));
         var handler = new FakeHttpMessageHandler(graphQlResponses);
         var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
-        var command = new MergeCommand(restClient, graphQlClient, merger, console, delay, pollInterval, pollTimeout);
+        var command = new MergeCommand(restClient, graphQlClient, merger, console, auditLog ?? new FakeAuditLog(), delay, pollInterval, pollTimeout);
         return (command, console);
     }
 
