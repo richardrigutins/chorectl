@@ -75,6 +75,54 @@ public class ListCommandTests
     }
 
     [Fact]
+    public async Task RunAsync_WithVerbose_PrintsDiscoveryAndFetchDiagnostics()
+    {
+        var console = new TestConsole();
+        var restClient = new RestClient(new FakeRepositorySource(
+            new RepositoryInfo("octocat", "sample-repo", IsArchived: false, IsFork: false)));
+        var handler = new FakeHttpMessageHandler(SingleNodeResponse());
+        var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
+        var command = new ListCommand(restClient, graphQlClient, console);
+
+        await command.RunAsync(verbose: true);
+
+        Assert.Contains("Discovered 1 repo(s)", console.Output);
+        Assert.Contains("Fetched 1 Dependabot PR(s)", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithoutVerbose_PrintsNoDiagnostics()
+    {
+        var console = new TestConsole();
+        var restClient = new RestClient(new FakeRepositorySource(
+            new RepositoryInfo("octocat", "sample-repo", IsArchived: false, IsFork: false)));
+        var handler = new FakeHttpMessageHandler(SingleNodeResponse());
+        var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
+        var command = new ListCommand(restClient, graphQlClient, console);
+
+        await command.RunAsync();
+
+        Assert.DoesNotContain("Discovered", console.Output);
+        Assert.DoesNotContain("Fetched", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithVerboseAndJson_SuppressesDiagnosticsToKeepOutputStructured()
+    {
+        var console = new TestConsole();
+        var restClient = new RestClient(new FakeRepositorySource(
+            new RepositoryInfo("octocat", "sample-repo", IsArchived: false, IsFork: false)));
+        var handler = new FakeHttpMessageHandler(SingleNodeResponse());
+        var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
+        var command = new ListCommand(restClient, graphQlClient, console);
+
+        await command.RunAsync(verbose: true, json: true);
+
+        Assert.DoesNotContain("Discovered", console.Output);
+        Assert.DoesNotContain("Fetched", console.Output);
+    }
+
+    [Fact]
     public async Task RunAsync_WithUnknownRepo_ThrowsRepositoryNotFoundException()
     {
         var console = new TestConsole();

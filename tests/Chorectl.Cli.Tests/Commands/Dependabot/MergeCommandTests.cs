@@ -709,6 +709,54 @@ public class MergeCommandTests
     }
 
     [Fact]
+    public async Task RunAsync_WithVerbose_PrintsDiscoveryFetchAndRefetchDiagnostics()
+    {
+        var merger = new FakePullRequestMerger();
+        var (command, console) = CreateCommand(
+            merger,
+            SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1")),
+            ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1"));
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        await command.RunAsync(verbose: true);
+
+        Assert.Contains("Discovered 1 repo(s)", console.Output);
+        Assert.Contains("Fetched 1 Dependabot PR(s)", console.Output);
+        Assert.Contains("Refetching state for octocat/sample-repo#1", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithoutVerbose_PrintsNoDiagnostics()
+    {
+        var merger = new FakePullRequestMerger();
+        var (command, console) = CreateCommand(
+            merger,
+            SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1")),
+            ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1"));
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        await command.RunAsync();
+
+        Assert.DoesNotContain("Discovered", console.Output);
+        Assert.DoesNotContain("Refetching state", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithVerboseAndJson_SuppressesDiagnosticsToKeepOutputStructured()
+    {
+        var merger = new FakePullRequestMerger();
+        var (command, console) = CreateCommand(
+            merger,
+            SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1")),
+            ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1"));
+
+        await command.RunAsync(yes: true, json: true, verbose: true);
+
+        Assert.DoesNotContain("Discovered", console.Output);
+        Assert.DoesNotContain("Refetching state", console.Output);
+    }
+
+    [Fact]
     public async Task RunAsync_WithJsonAndNoPrsReady_PrintsEmptyStructuredResults()
     {
         var merger = new FakePullRequestMerger();

@@ -197,6 +197,50 @@ public class ApproveCommandTests
     }
 
     [Fact]
+    public async Task RunAsync_WithVerbose_PrintsDiscoveryAndFetchDiagnostics()
+    {
+        var approver = new FakePullRequestApprover();
+        var (command, console) = CreateCommand(
+            approver,
+            [SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"))]);
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        await command.RunAsync(verbose: true);
+
+        Assert.Contains("Discovered 1 repo(s)", console.Output);
+        Assert.Contains("Fetched 1 Dependabot PR(s)", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithoutVerbose_PrintsNoDiagnostics()
+    {
+        var approver = new FakePullRequestApprover();
+        var (command, console) = CreateCommand(
+            approver,
+            [SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"))]);
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        await command.RunAsync();
+
+        Assert.DoesNotContain("Discovered", console.Output);
+        Assert.DoesNotContain("Fetched", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithVerboseAndJson_SuppressesDiagnosticsToKeepOutputStructured()
+    {
+        var approver = new FakePullRequestApprover();
+        var (command, console) = CreateCommand(
+            approver,
+            [SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"))]);
+
+        await command.RunAsync(yes: true, json: true, verbose: true);
+
+        Assert.DoesNotContain("Discovered", console.Output);
+        Assert.DoesNotContain("Fetched", console.Output);
+    }
+
+    [Fact]
     public async Task RunAsync_WithRepo_ScopesDiscoveryAndFetchToThatRepo()
     {
         var approver = new FakePullRequestApprover();
