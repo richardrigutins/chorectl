@@ -219,6 +219,72 @@ public class RebaseCommandTests
         Assert.Empty(commenter.CommentCalls);
     }
 
+    [Fact]
+    public async Task RunAsync_WithYes_SkipsSelectionScreenAndRequestsRebaseForAllExceptAlreadyRebasingPrs()
+    {
+        var commenter = new FakePullRequestCommenter();
+        var (command, console) = CreateCommand(
+            commenter,
+            SearchResponse(
+                Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND",
+                    body: "Dependabot is rebasing this PR due to a merge conflict."),
+                Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")));
+
+        var exitCode = await command.RunAsync(yes: true);
+
+        Assert.Equal(0, exitCode);
+        var call = Assert.Single(commenter.CommentCalls);
+        Assert.Equal(2, call.Pr.Number);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithDryRun_ShowsSummaryButRequestsNothing()
+    {
+        var commenter = new FakePullRequestCommenter();
+        var (command, console) = CreateCommand(
+            commenter,
+            SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")));
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        var exitCode = await command.RunAsync(dryRun: true);
+
+        Assert.Equal(0, exitCode);
+        Assert.Empty(commenter.CommentCalls);
+        Assert.Contains("requested", console.Output);
+        Assert.Contains("dry run — no changes made", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithJson_PrintsStructuredResultsWithoutPrompting()
+    {
+        var commenter = new FakePullRequestCommenter();
+        var (command, console) = CreateCommand(
+            commenter,
+            SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")));
+
+        var exitCode = await command.RunAsync(json: true);
+
+        Assert.Equal(0, exitCode);
+        var call = Assert.Single(commenter.CommentCalls);
+        Assert.Equal(1, call.Pr.Number);
+        Assert.Contains("\"outcome\": \"requested\"", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithJson_ExcludesTheRawPrBodyFromOutput()
+    {
+        var commenter = new FakePullRequestCommenter();
+        var (command, console) = CreateCommand(
+            commenter,
+            SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND",
+                body: "Bumps left-pad from 1.0.0 to 1.0.1.\\n<details><summary>Changelog</summary>...</details>")));
+
+        await command.RunAsync(json: true);
+
+        Assert.DoesNotContain("\"body\"", console.Output);
+        Assert.DoesNotContain("Changelog", console.Output);
+    }
+
     private static (RebaseCommand Command, TestConsole Console) CreateCommand(
         FakePullRequestCommenter commenter,
         params string[] graphQlResponses)

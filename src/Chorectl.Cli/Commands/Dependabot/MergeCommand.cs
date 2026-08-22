@@ -1,3 +1,4 @@
+using Chorectl.Cli.Rendering;
 using Chorectl.Cli.Rendering.Dependabot;
 using Chorectl.Core.Domain.Dependabot;
 using Chorectl.Core.GitHub;
@@ -21,7 +22,7 @@ public sealed class MergeCommand(
     TimeSpan? mergePollInterval = null,
     TimeSpan? mergePollTimeout = null) : AsyncCommand<MergeCommand.Settings>
 {
-    public sealed class Settings : RepoScopedSettings;
+    public sealed class Settings : ActionSettings;
 
     // Hardcoded until `chorectl config` (Phase 2) can supply merge_poll_interval_seconds / merge_poll_timeout_seconds.
     private static readonly TimeSpan DefaultMergePollInterval = TimeSpan.FromSeconds(15);
@@ -32,9 +33,14 @@ public sealed class MergeCommand(
     private readonly TimeSpan mergePollTimeout = mergePollTimeout ?? DefaultMergePollTimeout;
 
     protected override Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken) =>
-        RunAsync(settings.Repo, cancellationToken);
+        RunAsync(settings.Repo, settings.DryRun, settings.Yes, settings.Json, cancellationToken);
 
-    public async Task<int> RunAsync(string? repo = null, CancellationToken cancellationToken = default)
+    public async Task<int> RunAsync(
+        string? repo = null,
+        bool dryRun = false,
+        bool yes = false,
+        bool json = false,
+        CancellationToken cancellationToken = default)
     {
         var repos = await restClient.DiscoverReposAsync(repo);
         var prs = await graphQlClient.FetchDependabotPrsAsync(repos, cancellationToken);
@@ -42,29 +48,59 @@ public sealed class MergeCommand(
 
         if (ready.Count == 0)
         {
-            console.MarkupLine("No Dependabot PRs are ready to merge.");
-            return 0;
+            return ReportNothingToDo(json, dryRun, "No Dependabot PRs are ready to merge.");
         }
 
-        var selected = SelectionScreens.PromptMerge(console, ready);
+        // --json can't render an interactive prompt, so it implies --yes for action commands.
+        var selected = yes || json
+            ? ready.Where(Classifier.DefaultSelected).ToList()
+            : SelectionScreens.PromptMerge(console, ready);
+
         if (selected.Count == 0)
         {
-            console.MarkupLine("No PRs selected. Nothing merged.");
-            return 0;
+            return ReportNothingToDo(json, dryRun, "No PRs selected. Nothing merged.");
         }
 
         var owners = repos.ToDictionary(r => r.Name, r => r.Owner);
 
-        ProgressDisplay.RenderHeader(console);
-        var results = await MergeSelectedAsync(owners, selected, cancellationToken);
-        ProgressDisplay.RenderSummary(console, results);
+        if (!json)
+        {
+            ProgressDisplay.RenderHeader(console);
+        }
+
+        var results = await MergeSelectedAsync(owners, selected, dryRun, json, cancellationToken);
+
+        if (json)
+        {
+            JsonOutput.Write(console, new ActionJsonOutput<MergeResult>(dryRun, results));
+        }
+        else
+        {
+            ProgressDisplay.RenderSummary(console, results, dryRun);
+        }
 
         return results.Any(r => r.Outcome == MergeOutcome.Failed) ? 1 : 0;
+    }
+
+    private int ReportNothingToDo(bool json, bool dryRun, string message)
+    {
+        if (json)
+        {
+            JsonOutput.Write(console, new ActionJsonOutput<MergeResult>(dryRun, []));
+        }
+        else
+        {
+            console.MarkupLine(message);
+        }
+
+        return 0;
     }
 
     private async Task<List<MergeResult>> MergeSelectedAsync(
         IReadOnlyDictionary<string, string> owners,
         IReadOnlyList<DependabotPr> selected,
+        bool dryRun,
+        bool json,
         CancellationToken cancellationToken)
     {
         var results = new List<MergeResult>();
@@ -72,20 +108,26 @@ public sealed class MergeCommand(
         foreach (var group in selected.GroupBy(pr => pr.Repo))
         {
             var owner = owners[group.Key];
-            ProgressDisplay.RenderRepoHeader(console, group.Key);
+            if (!json)
+            {
+                ProgressDisplay.RenderRepoHeader(console, group.Key);
+            }
 
             foreach (var pr in group)
             {
-                var result = await MergeOneAsync(owner, pr, cancellationToken);
+                var result = await MergeOneAsync(owner, pr, dryRun, json, cancellationToken);
                 results.Add(result);
-                ProgressDisplay.RenderResult(console, result);
+                if (!json)
+                {
+                    ProgressDisplay.RenderResult(console, result);
+                }
             }
         }
 
         return results;
     }
 
-    private async Task<MergeResult> MergeOneAsync(string owner, DependabotPr pr, CancellationToken cancellationToken)
+    private async Task<MergeResult> MergeOneAsync(string owner, DependabotPr pr, bool dryRun, bool json, CancellationToken cancellationToken)
     {
         var refetched = await graphQlClient.RefetchAsync(owner, pr, cancellationToken);
         if (refetched is null)
@@ -100,6 +142,12 @@ public sealed class MergeCommand(
             return new MergeResult(refetched, MergeOutcome.Skipped, DescribeNotReady(refetched));
         }
 
+        // Dry run stops here - the PR would be merged, but no mutation is issued (AC-08.1).
+        if (dryRun)
+        {
+            return new MergeResult(refetched, MergeOutcome.Merged);
+        }
+
         try
         {
             await merger.MergeAsync(owner, refetched, cancellationToken);
@@ -109,7 +157,7 @@ public sealed class MergeCommand(
         {
             // The only retryable failure - covers both "Dependabot is actively rebasing" and
             // "nothing's rebased it yet", which look identical from the API (US-12/AC-12.1).
-            return await PollAndRetryMergeAsync(owner, refetched, cancellationToken);
+            return await PollAndRetryMergeAsync(owner, refetched, json, cancellationToken);
         }
         catch (GitHubAuthException ex)
         {
@@ -124,12 +172,15 @@ public sealed class MergeCommand(
         }
     }
 
-    private async Task<MergeResult> PollAndRetryMergeAsync(string owner, DependabotPr pr, CancellationToken cancellationToken)
+    private async Task<MergeResult> PollAndRetryMergeAsync(string owner, DependabotPr pr, bool json, CancellationToken cancellationToken)
     {
         // Checked once, off the refetch that already happened before the failed merge attempt -
         // not re-checked each iteration, so a banner that appears mid-poll won't update this
         // message. Display-only, so that's an acceptable simplification.
-        ProgressDisplay.RenderPolling(console, pr, mergePollTimeout);
+        if (!json)
+        {
+            ProgressDisplay.RenderPolling(console, pr, mergePollTimeout);
+        }
 
         var current = pr;
         var elapsed = TimeSpan.Zero;

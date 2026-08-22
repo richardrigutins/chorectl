@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Chorectl.Core.Domain.Dependabot;
 
 /// <summary>
@@ -52,8 +54,10 @@ public sealed record DependabotPr
 
     /// <summary>
     /// PR body, only populated by <c>RefetchAsync</c> - checked for Dependabot's temporary
-    /// rebase-in-progress banner (see <see cref="Classifier.HasRebaseBanner"/>).
+    /// rebase-in-progress banner (see <see cref="Classifier.HasRebaseBanner"/>). Excluded from
+    /// <c>--json</c> output: it's Dependabot's full raw changelog HTML, not user-facing state.
     /// </summary>
+    [JsonIgnore]
     public string? Body { get; init; }
 
     /// <summary>Whether the PR is a draft.</summary>
