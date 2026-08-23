@@ -35,10 +35,27 @@ public static class ProgressDisplay
             ? $"{pr.DependencyName}  {pr.FromVersion} -> {pr.ToVersion}"
             : pr.Title).EscapeMarkup();
 
-    public static void RenderPolling(IAnsiConsole console, DependabotPr pr, TimeSpan timeout)
+    /// <summary>
+    /// Runs <paramref name="poll"/> under a live-updating Spectre.Console status display, showing
+    /// a per-PR countdown of the remaining poll time. Whether the banner label applies is decided
+    /// once from <paramref name="pr"/>'s state going into the poll - not re-checked on every tick,
+    /// so a banner that appears or disappears mid-poll won't update the label. Display-only, so
+    /// that's an acceptable simplification.
+    /// </summary>
+    public static Task<MergeResult> RunLivePollAsync(
+        IAnsiConsole console,
+        DependabotPr pr,
+        TimeSpan timeout,
+        Func<Action<TimeSpan>, Task<MergeResult>> poll)
     {
-        var status = Classifier.HasRebaseBanner(pr) ? "rebase in progress, polling" : "polling";
-        console.MarkupLine($" [grey]⏳ #{pr.Number}  {Describe(pr)}   {status} (up to {timeout.TotalSeconds:0}s)...[/]");
+        var label = Classifier.HasRebaseBanner(pr) ? "rebase in progress, polling" : "polling";
+        var description = Describe(pr);
+
+        string Frame(string suffix) => $" [grey]⏳ #{pr.Number}  {description}   {label} {suffix}[/]";
+
+        return console.Status().StartAsync(
+            Frame($"(up to {timeout.TotalSeconds:0}s)..."),
+            ctx => poll(remaining => ctx.Status(Frame($"— {Math.Max(0, remaining.TotalSeconds):0}s left"))));
     }
 
     public static void RenderSummary(IAnsiConsole console, IReadOnlyList<MergeResult> results, bool dryRun = false)

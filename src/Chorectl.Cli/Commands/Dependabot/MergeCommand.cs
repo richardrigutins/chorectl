@@ -190,16 +190,13 @@ public sealed class MergeCommand(
         }
     }
 
-    private async Task<MergeResult> PollAndRetryMergeAsync(string owner, DependabotPr pr, bool json, CancellationToken cancellationToken)
-    {
-        // Checked once, off the refetch that already happened before the failed merge attempt -
-        // not re-checked each iteration, so a banner that appears mid-poll won't update this
-        // message. Display-only, so that's an acceptable simplification.
-        if (!json)
-        {
-            ProgressDisplay.RenderPolling(console, pr, mergePollTimeout);
-        }
+    private Task<MergeResult> PollAndRetryMergeAsync(string owner, DependabotPr pr, bool json, CancellationToken cancellationToken) =>
+        json
+            ? PollLoopAsync(owner, pr, null, cancellationToken)
+            : ProgressDisplay.RunLivePollAsync(console, pr, mergePollTimeout, onTick => PollLoopAsync(owner, pr, onTick, cancellationToken));
 
+    private async Task<MergeResult> PollLoopAsync(string owner, DependabotPr pr, Action<TimeSpan>? onTick, CancellationToken cancellationToken)
+    {
         var current = pr;
         var elapsed = TimeSpan.Zero;
 
@@ -207,6 +204,7 @@ public sealed class MergeCommand(
         {
             await delay(mergePollInterval, cancellationToken);
             elapsed += mergePollInterval;
+            onTick?.Invoke(mergePollTimeout - elapsed);
 
             var refetched = await graphQlClient.RefetchAsync(owner, current, cancellationToken);
             if (refetched is null)

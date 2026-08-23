@@ -21,22 +21,22 @@ public static class OverviewTable
             $"chorectl dependabot list [grey]·[/] {prs.Count} open Dependabot {Pluralize("PR", prs.Count)} across {repoCount} {Pluralize("repo", repoCount)}");
         console.WriteLine();
 
-        var table = new Table().Border(TableBorder.None);
-        table.AddColumn("REPO");
-        table.AddColumn("#");
-        table.AddColumn("DEPENDENCY");
-        table.AddColumn("BUMP");
-        table.AddColumn("CI");
-        table.AddColumn("REVIEW");
-        table.AddColumn("MERGE");
+        var table = new Table().Border(TableBorder.Rounded).BorderColor(Color.Grey);
+        table.AddColumn("[bold]REPO[/]");
+        table.AddColumn("[bold]#[/]");
+        table.AddColumn("[bold]DEPENDENCY[/]");
+        table.AddColumn("[bold]BUMP[/]");
+        table.AddColumn("[bold]CI[/]");
+        table.AddColumn("[bold]REVIEW[/]");
+        table.AddColumn("[bold]MERGE[/]");
 
         foreach (var pr in prs.OrderBy(p => p.Repo).ThenBy(p => p.Number))
         {
             table.AddRow(
-                pr.Repo.EscapeMarkup(),
+                $"[bold]{pr.Repo.EscapeMarkup()}[/]",
                 pr.Number.ToString(),
                 (pr.DependencyName ?? "-").EscapeMarkup(),
-                pr.SemverLevel.ToString().ToLowerInvariant(),
+                BumpStyle.Markup(pr.SemverLevel),
                 CiSymbol(pr.Ci),
                 ReviewSymbol(pr.Review),
                 MergeSymbol(pr.MergeStateStatus));
