@@ -23,25 +23,30 @@ public static class CompositionRoot
     {
         var cachingAuthenticator = new CachingGitHubAuthenticator(authenticator);
         var configLoader = new ConfigLoader(ConfigLoader.DefaultPath);
-        var config = configLoader.Load();
+
+        // Lazy, and shared across every registration that needs it, so a malformed config file
+        // only surfaces (via Spectre's exception handler, wired up below) when a command that
+        // actually needs config resolves its dependencies - never for --help or a bad-config-fixing
+        // `config set`, and never before app.Run() has a chance to catch it.
+        var lazyConfig = new Lazy<ChorectlConfig>(configLoader.Load);
 
         var services = new ServiceCollection();
 
         services.AddSingleton(console);
         services.AddSingleton(configLoader);
-        services.AddSingleton(config);
+        services.AddSingleton(_ => lazyConfig.Value);
         services.AddSingleton<IGitHubClient>(_ =>
             new GitHubClient(new Octokit.ProductHeaderValue("chorectl"), new GitHubCredentialStore(cachingAuthenticator)));
         services.AddSingleton<IRepositorySource, OctokitRepositorySource>();
         services.AddSingleton<IPullRequestMerger>(provider =>
-            new OctokitPullRequestMerger(provider.GetRequiredService<IGitHubClient>(), config.MergeMethod));
+            new OctokitPullRequestMerger(provider.GetRequiredService<IGitHubClient>(), lazyConfig.Value.MergeMethod));
         services.AddSingleton<IPullRequestCommenter, OctokitPullRequestCommenter>();
         services.AddSingleton<IPullRequestApprover, OctokitPullRequestApprover>();
         services.AddSingleton<IAuditLog>(new AuditLog(AuditLog.DefaultPath));
         services.AddSingleton(provider => new RestClient(
             provider.GetRequiredService<IRepositorySource>(),
-            new HashSet<string>(config.ExcludeRepos),
-            config.IncludeForks));
+            new HashSet<string>(lazyConfig.Value.ExcludeRepos),
+            lazyConfig.Value.IncludeForks));
         services.AddSingleton(_ =>
         {
             var httpClient = new HttpClient(new GitHubAuthenticationHandler(cachingAuthenticator) { InnerHandler = new HttpClientHandler() })
