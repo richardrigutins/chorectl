@@ -83,6 +83,6 @@ public static class SelectionScreens
             ? $"{pr.DependencyName}  {pr.FromVersion} -> {pr.ToVersion}"
             : pr.Title;
 
-        return $"#{pr.Number}  {change.EscapeMarkup()}  ({BumpStyle.Markup(pr.SemverLevel)})";
+        return $"#{pr.Number}  {change.EscapeMarkup()}  ({BumpStyle.Markup(pr.SemverLevel)}){Badges.Markup(pr)}";
     }
 }

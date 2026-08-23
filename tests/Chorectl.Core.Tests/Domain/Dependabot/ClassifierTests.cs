@@ -11,6 +11,7 @@ public class ClassifierTests
         bool isDraft = false,
         SemverLevel semverLevel = SemverLevel.Patch,
         bool isGrouped = false,
+        bool isSecurityUpdate = false,
         string? body = null) => new()
         {
             Repo = "repo",
@@ -24,6 +25,7 @@ public class ClassifierTests
             IsDraft = isDraft,
             SemverLevel = semverLevel,
             IsGrouped = isGrouped,
+            IsSecurityUpdate = isSecurityUpdate,
             Body = body,
         };
 
@@ -86,6 +88,16 @@ public class ClassifierTests
         var pr = CreatePr(semverLevel: semverLevel, isGrouped: isGrouped);
 
         Assert.Equal(expected, Classifier.DefaultSelected(pr));
+    }
+
+    [Theory]
+    [InlineData(SemverLevel.Patch)]
+    [InlineData(SemverLevel.Minor)]
+    public void DefaultSelected_NeverSelectsSecurityUpdates_RegardlessOfSemverLevel(SemverLevel semverLevel)
+    {
+        var pr = CreatePr(semverLevel: semverLevel, isSecurityUpdate: true);
+
+        Assert.False(Classifier.DefaultSelected(pr));
     }
 
     [Fact]

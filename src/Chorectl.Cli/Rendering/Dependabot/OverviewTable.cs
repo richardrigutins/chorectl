@@ -35,7 +35,7 @@ public static class OverviewTable
             table.AddRow(
                 $"[bold]{pr.Repo.EscapeMarkup()}[/]",
                 pr.Number.ToString(),
-                (pr.DependencyName ?? "-").EscapeMarkup(),
+                (pr.DependencyName ?? "-").EscapeMarkup() + Badges.Markup(pr),
                 BumpStyle.Markup(pr.SemverLevel),
                 CiSymbol(pr.Ci),
                 ReviewSymbol(pr.Review),

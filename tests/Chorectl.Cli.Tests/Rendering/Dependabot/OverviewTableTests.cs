@@ -127,6 +127,40 @@ public class OverviewTableTests
         Assert.Contains("Legend:", console.Output);
     }
 
+    [Fact]
+    public void Render_WithSecurityUpdate_ShowsSecurityBadge()
+    {
+        var console = new TestConsole();
+        var pr = Pr("repo", 1, isSecurityUpdate: true);
+
+        OverviewTable.Render(console, [pr]);
+
+        Assert.Contains("security", console.Output);
+    }
+
+    [Fact]
+    public void Render_WithGroupedUpdate_ShowsGroupedBadge()
+    {
+        var console = new TestConsole();
+        var pr = Pr("repo", 1, isGrouped: true);
+
+        OverviewTable.Render(console, [pr]);
+
+        Assert.Contains("grouped", console.Output);
+    }
+
+    [Fact]
+    public void Render_WithNeitherGroupedNorSecurityUpdate_ShowsNoBadge()
+    {
+        var console = new TestConsole();
+        var pr = Pr("repo", 1);
+
+        OverviewTable.Render(console, [pr]);
+
+        Assert.DoesNotContain("security", console.Output);
+        Assert.DoesNotContain("grouped", console.Output);
+    }
+
     private static DependabotPr Pr(
         string repo,
         int number,
@@ -134,7 +168,9 @@ public class OverviewTableTests
         SemverLevel semverLevel = SemverLevel.Patch,
         CiStatus ci = CiStatus.Passing,
         ReviewStatus review = ReviewStatus.Approved,
-        string mergeStateStatus = "CLEAN") => new()
+        string mergeStateStatus = "CLEAN",
+        bool isGrouped = false,
+        bool isSecurityUpdate = false) => new()
         {
             Repo = repo,
             Number = number,
@@ -146,5 +182,7 @@ public class OverviewTableTests
             Ci = ci,
             Review = review,
             MergeStateStatus = mergeStateStatus,
+            IsGrouped = isGrouped,
+            IsSecurityUpdate = isSecurityUpdate,
         };
 }
