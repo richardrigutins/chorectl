@@ -25,11 +25,17 @@ public static class Classifier
     public static bool NeedsApproval(DependabotPr pr) =>
         pr.Review == ReviewStatus.ReviewRequired;
 
-    /// <summary>Whether a PR should be pre-selected on the merge screen.</summary>
+    /// <summary>
+    /// Whether a PR should be pre-selected on the merge screen. Grouped updates are excluded
+    /// regardless of semver level - a group can bundle a major bump under a patch-looking title.
+    /// Security updates are excluded regardless of semver level too - they deserve a manual look
+    /// even at patch level.
+    /// </summary>
     public static bool DefaultSelected(DependabotPr pr) =>
         IsReadyToMerge(pr)
         && pr.SemverLevel is SemverLevel.Patch or SemverLevel.Minor
-        && !pr.IsGrouped;
+        && !pr.IsGrouped
+        && !pr.IsSecurityUpdate;
 
     /// <summary>
     /// Whether the PR body currently carries Dependabot's temporary rebase-in-progress banner.
