@@ -198,6 +198,151 @@ public class GraphQlClientTests
     }
 
     [Fact]
+    public async Task FetchDependabotPrsAsync_RequestsVulnerabilityAlertsAsASiblingOfSearch()
+    {
+        var handler = new FakeHttpMessageHandler(SingleNodeResponse("""
+            "reviewDecision": null,
+            "mergeStateStatus": "CLEAN",
+            "commits": { "nodes": [] }
+            """));
+        var client = CreateClient(handler);
+
+        await client.FetchDependabotPrsAsync([new RepositoryInfo("octocat", "repo", IsArchived: false, IsFork: false)]);
+
+        var requestBody = Assert.Single(handler.RequestBodies);
+        Assert.Contains("vulnerabilityAlerts", requestBody);
+        Assert.Contains("dependabotUpdate", requestBody);
+        Assert.Contains("repository(owner:", requestBody);
+    }
+
+    [Fact]
+    public async Task FetchDependabotPrsAsync_MarksPrAsSecurityUpdateWhenItAppearsInVulnerabilityAlerts()
+    {
+        var response = $$"""
+            {
+              "data": {
+                "search": {
+                  "pageInfo": { "hasNextPage": false, "endCursor": null },
+                  "nodes": [
+                    {{PrNodeJson(number: 42, repo: "repo")}}
+                  ]
+                },
+                "repo0": {
+                  "name": "repo",
+                  "vulnerabilityAlerts": {
+                    "nodes": [
+                      { "dependabotUpdate": { "pullRequest": { "number": 42 } } }
+                    ]
+                  }
+                }
+              }
+            }
+            """;
+        var handler = new FakeHttpMessageHandler(response);
+        var client = CreateClient(handler);
+
+        var prs = await client.FetchDependabotPrsAsync([new RepositoryInfo("octocat", "repo", IsArchived: false, IsFork: false)]);
+
+        Assert.True(Assert.Single(prs).IsSecurityUpdate);
+    }
+
+    [Fact]
+    public async Task FetchDependabotPrsAsync_DoesNotMarkPrAsSecurityUpdateWhenItsNumberIsAbsentFromAlerts()
+    {
+        var response = $$"""
+            {
+              "data": {
+                "search": {
+                  "pageInfo": { "hasNextPage": false, "endCursor": null },
+                  "nodes": [
+                    {{PrNodeJson(number: 42, repo: "repo")}}
+                  ]
+                },
+                "repo0": {
+                  "name": "repo",
+                  "vulnerabilityAlerts": { "nodes": [] }
+                }
+              }
+            }
+            """;
+        var handler = new FakeHttpMessageHandler(response);
+        var client = CreateClient(handler);
+
+        var prs = await client.FetchDependabotPrsAsync([new RepositoryInfo("octocat", "repo", IsArchived: false, IsFork: false)]);
+
+        Assert.False(Assert.Single(prs).IsSecurityUpdate);
+    }
+
+    [Fact]
+    public async Task FetchDependabotPrsAsync_CrossReferencesAlertsPerRepoNotJustByPrNumber()
+    {
+        var response = $$"""
+            {
+              "data": {
+                "search": {
+                  "pageInfo": { "hasNextPage": false, "endCursor": null },
+                  "nodes": [
+                    {{PrNodeJson(number: 7, repo: "repo-a")}},
+                    {{PrNodeJson(number: 7, repo: "repo-b")}}
+                  ]
+                },
+                "repo0": {
+                  "name": "repo-a",
+                  "vulnerabilityAlerts": {
+                    "nodes": [ { "dependabotUpdate": { "pullRequest": { "number": 7 } } } ]
+                  }
+                },
+                "repo1": {
+                  "name": "repo-b",
+                  "vulnerabilityAlerts": { "nodes": [] }
+                }
+              }
+            }
+            """;
+        var handler = new FakeHttpMessageHandler(response);
+        var client = CreateClient(handler);
+
+        var prs = await client.FetchDependabotPrsAsync([
+            new RepositoryInfo("octocat", "repo-a", IsArchived: false, IsFork: false),
+            new RepositoryInfo("octocat", "repo-b", IsArchived: false, IsFork: false),
+        ]);
+
+        Assert.True(prs.Single(p => p.Repo == "repo-a").IsSecurityUpdate);
+        Assert.False(prs.Single(p => p.Repo == "repo-b").IsSecurityUpdate);
+    }
+
+    [Fact]
+    public async Task FetchDependabotPrsAsync_IgnoresVulnerabilityAlertsNotLinkedToADependabotPullRequest()
+    {
+        var response = $$"""
+            {
+              "data": {
+                "search": {
+                  "pageInfo": { "hasNextPage": false, "endCursor": null },
+                  "nodes": [
+                    {{PrNodeJson(number: 42, repo: "repo")}}
+                  ]
+                },
+                "repo0": {
+                  "name": "repo",
+                  "vulnerabilityAlerts": {
+                    "nodes": [
+                      { "dependabotUpdate": null }
+                    ]
+                  }
+                }
+              }
+            }
+            """;
+        var handler = new FakeHttpMessageHandler(response);
+        var client = CreateClient(handler);
+
+        var prs = await client.FetchDependabotPrsAsync([new RepositoryInfo("octocat", "repo", IsArchived: false, IsFork: false)]);
+
+        Assert.False(Assert.Single(prs).IsSecurityUpdate);
+    }
+
+    [Fact]
     public async Task RefetchAsync_WhenPrIsStillOpen_ReturnsUpdatedPr()
     {
         var handler = new FakeHttpMessageHandler(SingleByNumberResponse("""
@@ -299,6 +444,23 @@ public class GraphQlClientTests
     }
 
     [Fact]
+    public async Task RefetchAsync_CarriesForwardTheKnownIsSecurityUpdateFlag()
+    {
+        var handler = new FakeHttpMessageHandler(SingleByNumberResponse("""
+            "reviewDecision": "APPROVED",
+            "mergeStateStatus": "CLEAN",
+            "state": "OPEN",
+            "commits": { "nodes": [] }
+            """));
+        var client = CreateClient(handler);
+        var pr = SamplePr() with { IsSecurityUpdate = true };
+
+        var refetched = await client.RefetchAsync("octocat", pr);
+
+        Assert.True(refetched?.IsSecurityUpdate);
+    }
+
+    [Fact]
     public async Task RefetchAsync_WhenTheApiReturnsErrors_Throws()
     {
         var handler = new FakeHttpMessageHandler("""{ "data": null, "errors": [ { "message": "something went wrong" } ] }""");
@@ -343,6 +505,22 @@ public class GraphQlClientTests
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") };
         return new GraphQlClient(httpClient);
     }
+
+    private static string PrNodeJson(int number, string repo, string title = "Bump some-dependency from 1.0.0 to 1.1.0") => $$"""
+        {
+          "number": {{number}},
+          "title": "{{title}}",
+          "url": "https://github.com/octocat/{{repo}}/pull/{{number}}",
+          "headRefName": "dependabot/npm_and_yarn/some-dependency-1.1.0",
+          "isDraft": false,
+          "updatedAt": "2026-08-01T12:00:00Z",
+          "reviewDecision": null,
+          "mergeStateStatus": "CLEAN",
+          "repository": { "name": "{{repo}}" },
+          "labels": { "nodes": [] },
+          "commits": { "nodes": [] }
+        }
+        """;
 
     private static string SingleNodeResponse(string extraFields, int number = 1, bool hasNextPage = false, string? endCursor = null, string title = "Bump some-dependency from 1.0.0 to 1.1.0") => $$"""
         {
