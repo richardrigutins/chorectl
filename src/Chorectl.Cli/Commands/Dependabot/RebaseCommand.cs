@@ -31,10 +31,11 @@ public sealed class RebaseCommand(
     private const string RebaseComment = "@dependabot rebase";
 
     protected override Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken) =>
-        RunAsync(settings.Repo, settings.All, settings.DryRun, settings.Yes, settings.Json, settings.Verbose, cancellationToken);
+        RunAsync(settings.Repo, settings.Security, settings.All, settings.DryRun, settings.Yes, settings.Json, settings.Verbose, cancellationToken);
 
     public async Task<int> RunAsync(
         string? repo = null,
+        bool security = false,
         bool all = false,
         bool dryRun = false,
         bool yes = false,
@@ -47,6 +48,11 @@ public sealed class RebaseCommand(
 
         var prs = await graphQlClient.FetchDependabotPrsAsync(repos, cancellationToken);
         VerboseLog.Write(console, verbose, json, $"Fetched {prs.Count} Dependabot PR(s)");
+
+        if (security)
+        {
+            prs = prs.Where(pr => pr.IsSecurityUpdate).ToList();
+        }
 
         var candidates = (all ? prs : prs.Where(Classifier.NeedsRebase))
             .OrderBy(p => p.Repo).ThenBy(p => p.Number).ToList();

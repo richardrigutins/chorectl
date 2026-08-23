@@ -241,6 +241,24 @@ public class ApproveCommandTests
     }
 
     [Fact]
+    public async Task RunAsync_WithSecurity_FiltersToSecurityUpdatePrsThatNeedApproval()
+    {
+        var approver = new FakePullRequestApprover();
+        var (command, console) = CreateCommand(
+            approver,
+            [SearchResponseWithSecurityAlert(
+                securityPrNumber: 1,
+                Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"),
+                Node(2, "Bump right-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"))]);
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        await command.RunAsync(security: true);
+
+        Assert.Contains("left-pad", console.Output);
+        Assert.DoesNotContain("right-pad", console.Output);
+    }
+
+    [Fact]
     public async Task RunAsync_WithRepo_ScopesDiscoveryAndFetchToThatRepo()
     {
         var approver = new FakePullRequestApprover();
@@ -354,6 +372,25 @@ public class ApproveCommandTests
             "search": {
               "pageInfo": { "hasNextPage": false, "endCursor": null },
               "nodes": [ {{string.Join(",", nodes)}} ]
+            }
+          }
+        }
+        """;
+
+    private static string SearchResponseWithSecurityAlert(int securityPrNumber, params string[] nodes) => $$"""
+        {
+          "data": {
+            "search": {
+              "pageInfo": { "hasNextPage": false, "endCursor": null },
+              "nodes": [ {{string.Join(",", nodes)}} ]
+            },
+            "repo0": {
+              "name": "sample-repo",
+              "vulnerabilityAlerts": {
+                "nodes": [
+                  { "dependabotUpdate": { "pullRequest": { "number": {{securityPrNumber}} } } }
+                ]
+              }
             }
           }
         }

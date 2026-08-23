@@ -23,10 +23,11 @@ public sealed class ApproveCommand(
     public sealed class Settings : ActionSettings;
 
     protected override Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken) =>
-        RunAsync(settings.Repo, settings.DryRun, settings.Yes, settings.Json, settings.Verbose, cancellationToken);
+        RunAsync(settings.Repo, settings.Security, settings.DryRun, settings.Yes, settings.Json, settings.Verbose, cancellationToken);
 
     public async Task<int> RunAsync(
         string? repo = null,
+        bool security = false,
         bool dryRun = false,
         bool yes = false,
         bool json = false,
@@ -38,6 +39,11 @@ public sealed class ApproveCommand(
 
         var prs = await graphQlClient.FetchDependabotPrsAsync(repos, cancellationToken);
         VerboseLog.Write(console, verbose, json, $"Fetched {prs.Count} Dependabot PR(s)");
+
+        if (security)
+        {
+            prs = prs.Where(pr => pr.IsSecurityUpdate).ToList();
+        }
 
         var needsApproval = prs.Where(Classifier.NeedsApproval).OrderBy(p => p.Repo).ThenBy(p => p.Number).ToList();
 
