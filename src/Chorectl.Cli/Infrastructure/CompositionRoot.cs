@@ -29,6 +29,7 @@ public static class CompositionRoot
 
         services.AddSingleton(console);
         services.AddSingleton(configLoader);
+        services.AddSingleton(config);
         services.AddSingleton<IGitHubClient>(_ =>
             new GitHubClient(new Octokit.ProductHeaderValue("chorectl"), new GitHubCredentialStore(cachingAuthenticator)));
         services.AddSingleton<IRepositorySource, OctokitRepositorySource>();
@@ -52,10 +53,10 @@ public static class CompositionRoot
         });
 
         var app = new CommandApp(new TypeRegistrar(services));
-        app.Configure(config =>
+        app.Configure(cli =>
         {
-            AppConfiguration.Configure(config);
-            config.ConfigureConsole(console);
+            AppConfiguration.Configure(cli);
+            cli.ConfigureConsole(console);
         });
 
         return app.Run(args);

@@ -1,4 +1,5 @@
 using Chorectl.Cli.Commands.Dependabot;
+using Chorectl.Core.Config;
 using Chorectl.Core.GitHub;
 using Spectre.Console.Testing;
 
@@ -788,6 +789,27 @@ public class MergeCommandTests
         Assert.Contains("\"results\": []", console.Output);
     }
 
+    [Fact]
+    public async Task RunAsync_WithNoOverride_UsesThePollIntervalAndTimeoutFromTheInjectedConfig()
+    {
+        var merger = new FakePullRequestMerger { FailForPrNumbers = { 1 } };
+        var console = new TestConsole().Interactive();
+        var restClient = new RestClient(new FakeRepositorySource(
+            new RepositoryInfo("octocat", "sample-repo", IsArchived: false, IsFork: false)));
+        var handler = new FakeHttpMessageHandler(
+            SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")),
+            ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+            ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"));
+        var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
+        var config = new ChorectlConfig { MergePollIntervalSeconds = 3, MergePollTimeoutSeconds = 3 };
+        var command = new MergeCommand(restClient, graphQlClient, merger, console, new FakeAuditLog(), config, NoOpDelay);
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        await command.RunAsync();
+
+        Assert.Contains("still not mergeable after 3s", console.Output);
+    }
+
     private static Task NoOpDelay(TimeSpan wait, CancellationToken cancellationToken) => Task.CompletedTask;
 
     private static (MergeCommand Command, TestConsole Console) CreateCommand(
@@ -808,7 +830,14 @@ public class MergeCommandTests
             new RepositoryInfo("octocat", "sample-repo", IsArchived: false, IsFork: false)));
         var handler = new FakeHttpMessageHandler(graphQlResponses);
         var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
-        var command = new MergeCommand(restClient, graphQlClient, merger, console, auditLog ?? new FakeAuditLog(), delay, pollInterval, pollTimeout);
+        var config = pollInterval is null && pollTimeout is null
+            ? null
+            : new ChorectlConfig
+            {
+                MergePollIntervalSeconds = (int)(pollInterval ?? TimeSpan.FromSeconds(15)).TotalSeconds,
+                MergePollTimeoutSeconds = (int)(pollTimeout ?? TimeSpan.FromSeconds(120)).TotalSeconds,
+            };
+        var command = new MergeCommand(restClient, graphQlClient, merger, console, auditLog ?? new FakeAuditLog(), config, delay);
         return (command, console);
     }
 

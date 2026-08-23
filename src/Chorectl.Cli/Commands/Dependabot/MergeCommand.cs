@@ -1,6 +1,7 @@
 using Chorectl.Cli.Rendering;
 using Chorectl.Cli.Rendering.Dependabot;
 using Chorectl.Core.Audit;
+using Chorectl.Core.Config;
 using Chorectl.Core.Domain.Dependabot;
 using Chorectl.Core.GitHub;
 using Spectre.Console;
@@ -14,25 +15,24 @@ namespace Chorectl.Cli.Commands.Dependabot;
 /// attempted directly with no wait; only a failed merge attempt falls back to polling until the
 /// PR is no longer behind and CI is passing, or the poll timeout elapses.
 /// </summary>
+/// <param name="config">
+/// Supplies <c>merge_poll_interval_seconds</c>/<c>merge_poll_timeout_seconds</c>. Defaults to a
+/// fresh <see cref="ChorectlConfig"/> (15s/120s) when not injected, matching that type's own defaults.
+/// </param>
 public sealed class MergeCommand(
     RestClient restClient,
     GraphQlClient graphQlClient,
     IPullRequestMerger merger,
     IAnsiConsole console,
     IAuditLog auditLog,
-    Func<TimeSpan, CancellationToken, Task>? delay = null,
-    TimeSpan? mergePollInterval = null,
-    TimeSpan? mergePollTimeout = null) : AsyncCommand<MergeCommand.Settings>
+    ChorectlConfig? config = null,
+    Func<TimeSpan, CancellationToken, Task>? delay = null) : AsyncCommand<MergeCommand.Settings>
 {
     public sealed class Settings : ActionSettings;
 
-    // Hardcoded until `chorectl config` (Phase 2) can supply merge_poll_interval_seconds / merge_poll_timeout_seconds.
-    private static readonly TimeSpan DefaultMergePollInterval = TimeSpan.FromSeconds(15);
-    private static readonly TimeSpan DefaultMergePollTimeout = TimeSpan.FromSeconds(120);
-
     private readonly Func<TimeSpan, CancellationToken, Task> delay = delay ?? Task.Delay;
-    private readonly TimeSpan mergePollInterval = mergePollInterval ?? DefaultMergePollInterval;
-    private readonly TimeSpan mergePollTimeout = mergePollTimeout ?? DefaultMergePollTimeout;
+    private readonly TimeSpan mergePollInterval = TimeSpan.FromSeconds((config ?? new ChorectlConfig()).MergePollIntervalSeconds);
+    private readonly TimeSpan mergePollTimeout = TimeSpan.FromSeconds((config ?? new ChorectlConfig()).MergePollTimeoutSeconds);
 
     protected override Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken) =>
         RunAsync(settings.Repo, settings.Security, settings.DryRun, settings.Yes, settings.Json, settings.Verbose, cancellationToken);
