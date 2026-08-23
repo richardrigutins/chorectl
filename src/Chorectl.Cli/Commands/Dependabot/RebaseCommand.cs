@@ -31,120 +31,71 @@ public sealed class RebaseCommand(
     private const string RebaseComment = "@dependabot rebase";
 
     protected override Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken) =>
-        RunAsync(settings.Repo, settings.Security, settings.All, settings.DryRun, settings.Yes, settings.Json, settings.Verbose, cancellationToken);
+        RunAsync(settings, cancellationToken);
 
-    public async Task<int> RunAsync(
-        string? repo = null,
-        bool security = false,
-        bool all = false,
-        bool dryRun = false,
-        bool yes = false,
-        bool json = false,
-        bool verbose = false,
-        CancellationToken cancellationToken = default)
+    public async Task<int> RunAsync(Settings settings, CancellationToken cancellationToken = default)
     {
-        var repos = await restClient.DiscoverReposAsync(repo);
-        VerboseLog.Write(console, verbose, json, $"Discovered {repos.Count} repo(s)");
+        var repos = await restClient.DiscoverReposAsync(settings.Repo);
+        VerboseLog.Write(console, settings.Verbose, settings.Json, $"Discovered {repos.Count} repo(s)");
 
         var prs = await graphQlClient.FetchDependabotPrsAsync(repos, cancellationToken);
-        VerboseLog.Write(console, verbose, json, $"Fetched {prs.Count} Dependabot PR(s)");
+        VerboseLog.Write(console, settings.Verbose, settings.Json, $"Fetched {prs.Count} Dependabot PR(s)");
 
-        if (security)
+        if (settings.Security)
         {
             prs = prs.Where(pr => pr.IsSecurityUpdate).ToList();
         }
 
-        var candidates = (all ? prs : prs.Where(Classifier.NeedsRebase))
+        var candidates = (settings.All ? prs : prs.Where(Classifier.NeedsRebase))
             .OrderBy(p => p.Repo).ThenBy(p => p.Number).ToList();
 
         if (candidates.Count == 0)
         {
-            return ReportNothingToDo(json, dryRun, all ? "No open Dependabot PRs." : "No Dependabot PRs need a rebase.");
+            return DependabotActionSupport.ReportNothingToDo<RebaseResult>(
+                console, settings.Json, settings.DryRun, settings.All ? "No open Dependabot PRs." : "No Dependabot PRs need a rebase.");
         }
 
         // --json can't render an interactive prompt, so it implies --yes for action commands.
-        var selected = yes || json
+        var selected = settings.Yes || settings.Json
             ? candidates.Where(pr => Classifier.NeedsRebase(pr) && !Classifier.HasRebaseBanner(pr)).ToList()
             : SelectionScreens.PromptRebase(console, candidates);
 
         if (selected.Count == 0)
         {
-            return ReportNothingToDo(json, dryRun, "No PRs selected. Nothing requested.");
+            return DependabotActionSupport.ReportNothingToDo<RebaseResult>(console, settings.Json, settings.DryRun, "No PRs selected. Nothing requested.");
         }
 
         var owners = repos.ToDictionary(r => r.Name, r => r.Owner);
 
-        if (!json)
+        if (!settings.Json)
         {
             ProgressDisplay.RenderRebaseHeader(console);
         }
 
-        var results = await RequestRebasesAsync(owners, selected, dryRun, json, cancellationToken);
+        var results = await DependabotActionSupport.ExecuteGroupedByRepoAsync(
+            console,
+            auditLog,
+            owners,
+            selected,
+            settings.DryRun,
+            settings.Json,
+            (owner, pr, ct) => RequestOneAsync(owner, pr, settings.DryRun, ct),
+            r => r.Pr,
+            r => DescribeOutcome(r.Outcome),
+            r => r.Reason,
+            ProgressDisplay.RenderRebaseResult,
+            cancellationToken);
 
-        if (json)
+        if (settings.Json)
         {
-            JsonOutput.Write(console, new ActionJsonOutput<RebaseResult>(dryRun, results));
+            JsonOutput.Write(console, new ActionJsonOutput<RebaseResult>(settings.DryRun, results));
         }
         else
         {
-            ProgressDisplay.RenderRebaseSummary(console, results, dryRun);
+            ProgressDisplay.RenderRebaseSummary(console, results, settings.DryRun);
         }
 
         return results.Any(r => r.Outcome == RebaseOutcome.Failed) ? 1 : 0;
-    }
-
-    private int ReportNothingToDo(bool json, bool dryRun, string message)
-    {
-        if (json)
-        {
-            JsonOutput.Write(console, new ActionJsonOutput<RebaseResult>(dryRun, []));
-        }
-        else
-        {
-            console.MarkupLine(message);
-        }
-
-        return 0;
-    }
-
-    private async Task<List<RebaseResult>> RequestRebasesAsync(
-        IReadOnlyDictionary<string, string> owners,
-        IReadOnlyList<DependabotPr> selected,
-        bool dryRun,
-        bool json,
-        CancellationToken cancellationToken)
-    {
-        var results = new List<RebaseResult>();
-
-        foreach (var group in selected.GroupBy(pr => pr.Repo))
-        {
-            var owner = owners[group.Key];
-            if (!json)
-            {
-                ProgressDisplay.RenderRepoHeader(console, group.Key);
-            }
-
-            foreach (var pr in group)
-            {
-                var result = await RequestOneAsync(owner, pr, dryRun, cancellationToken);
-                results.Add(result);
-
-                // Dry run performs no actual mutation, so nothing is recorded (AC-08.1).
-                if (!dryRun)
-                {
-                    await auditLog.RecordAsync(
-                        new AuditEntry(DateTimeOffset.UtcNow, result.Pr.Repo, result.Pr.Number, DescribeOutcome(result.Outcome), result.Reason),
-                        cancellationToken);
-                }
-
-                if (!json)
-                {
-                    ProgressDisplay.RenderRebaseResult(console, result);
-                }
-            }
-        }
-
-        return results;
     }
 
     private async Task<RebaseResult> RequestOneAsync(string owner, DependabotPr pr, bool dryRun, CancellationToken cancellationToken)

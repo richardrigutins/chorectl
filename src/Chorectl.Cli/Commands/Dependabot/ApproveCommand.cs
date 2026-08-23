@@ -23,24 +23,17 @@ public sealed class ApproveCommand(
     public sealed class Settings : ActionSettings;
 
     protected override Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken) =>
-        RunAsync(settings.Repo, settings.Security, settings.DryRun, settings.Yes, settings.Json, settings.Verbose, cancellationToken);
+        RunAsync(settings, cancellationToken);
 
-    public async Task<int> RunAsync(
-        string? repo = null,
-        bool security = false,
-        bool dryRun = false,
-        bool yes = false,
-        bool json = false,
-        bool verbose = false,
-        CancellationToken cancellationToken = default)
+    public async Task<int> RunAsync(Settings settings, CancellationToken cancellationToken = default)
     {
-        var repos = await restClient.DiscoverReposAsync(repo);
-        VerboseLog.Write(console, verbose, json, $"Discovered {repos.Count} repo(s)");
+        var repos = await restClient.DiscoverReposAsync(settings.Repo);
+        VerboseLog.Write(console, settings.Verbose, settings.Json, $"Discovered {repos.Count} repo(s)");
 
         var prs = await graphQlClient.FetchDependabotPrsAsync(repos, cancellationToken);
-        VerboseLog.Write(console, verbose, json, $"Fetched {prs.Count} Dependabot PR(s)");
+        VerboseLog.Write(console, settings.Verbose, settings.Json, $"Fetched {prs.Count} Dependabot PR(s)");
 
-        if (security)
+        if (settings.Security)
         {
             prs = prs.Where(pr => pr.IsSecurityUpdate).ToList();
         }
@@ -49,92 +42,50 @@ public sealed class ApproveCommand(
 
         if (needsApproval.Count == 0)
         {
-            return ReportNothingToDo(json, dryRun, "No Dependabot PRs need approval.");
+            return DependabotActionSupport.ReportNothingToDo<ApproveResult>(console, settings.Json, settings.DryRun, "No Dependabot PRs need approval.");
         }
 
         // --json can't render an interactive prompt, so it implies --yes for action commands.
-        var selected = yes || json
+        var selected = settings.Yes || settings.Json
             ? needsApproval
             : SelectionScreens.PromptApprove(console, needsApproval);
 
         if (selected.Count == 0)
         {
-            return ReportNothingToDo(json, dryRun, "No PRs selected. Nothing approved.");
+            return DependabotActionSupport.ReportNothingToDo<ApproveResult>(console, settings.Json, settings.DryRun, "No PRs selected. Nothing approved.");
         }
 
         var owners = repos.ToDictionary(r => r.Name, r => r.Owner);
 
-        if (!json)
+        if (!settings.Json)
         {
             ProgressDisplay.RenderApproveHeader(console);
         }
 
-        var results = await ApprovePrsAsync(owners, selected, dryRun, json, cancellationToken);
+        var results = await DependabotActionSupport.ExecuteGroupedByRepoAsync(
+            console,
+            auditLog,
+            owners,
+            selected,
+            settings.DryRun,
+            settings.Json,
+            (owner, pr, ct) => ApproveOneAsync(owner, pr, settings.DryRun, ct),
+            r => r.Pr,
+            r => DescribeOutcome(r.Outcome),
+            r => r.Reason,
+            ProgressDisplay.RenderApproveResult,
+            cancellationToken);
 
-        if (json)
+        if (settings.Json)
         {
-            JsonOutput.Write(console, new ActionJsonOutput<ApproveResult>(dryRun, results));
+            JsonOutput.Write(console, new ActionJsonOutput<ApproveResult>(settings.DryRun, results));
         }
         else
         {
-            ProgressDisplay.RenderApproveSummary(console, results, dryRun);
+            ProgressDisplay.RenderApproveSummary(console, results, settings.DryRun);
         }
 
         return results.Any(r => r.Outcome == ApproveOutcome.Failed) ? 1 : 0;
-    }
-
-    private int ReportNothingToDo(bool json, bool dryRun, string message)
-    {
-        if (json)
-        {
-            JsonOutput.Write(console, new ActionJsonOutput<ApproveResult>(dryRun, []));
-        }
-        else
-        {
-            console.MarkupLine(message);
-        }
-
-        return 0;
-    }
-
-    private async Task<List<ApproveResult>> ApprovePrsAsync(
-        IReadOnlyDictionary<string, string> owners,
-        IReadOnlyList<DependabotPr> selected,
-        bool dryRun,
-        bool json,
-        CancellationToken cancellationToken)
-    {
-        var results = new List<ApproveResult>();
-
-        foreach (var group in selected.GroupBy(pr => pr.Repo))
-        {
-            var owner = owners[group.Key];
-            if (!json)
-            {
-                ProgressDisplay.RenderRepoHeader(console, group.Key);
-            }
-
-            foreach (var pr in group)
-            {
-                var result = await ApproveOneAsync(owner, pr, dryRun, cancellationToken);
-                results.Add(result);
-
-                // Dry run performs no actual mutation, so nothing is recorded (AC-08.1).
-                if (!dryRun)
-                {
-                    await auditLog.RecordAsync(
-                        new AuditEntry(DateTimeOffset.UtcNow, result.Pr.Repo, result.Pr.Number, DescribeOutcome(result.Outcome), result.Reason),
-                        cancellationToken);
-                }
-
-                if (!json)
-                {
-                    ProgressDisplay.RenderApproveResult(console, result);
-                }
-            }
-        }
-
-        return results;
     }
 
     private async Task<ApproveResult> ApproveOneAsync(string owner, DependabotPr pr, bool dryRun, CancellationToken cancellationToken)

@@ -22,7 +22,7 @@ public class MergeCommandTests
             auditLog: auditLog);
         console.Input.PushKey(ConsoleKey.Enter);
 
-        await command.RunAsync();
+        await command.RunAsync(Settings());
 
         var entry = Assert.Single(auditLog.Entries);
         Assert.Equal("sample-repo", entry.Repo);
@@ -46,7 +46,7 @@ public class MergeCommandTests
             auditLog: auditLog);
         console.Input.PushKey(ConsoleKey.Enter);
 
-        await command.RunAsync();
+        await command.RunAsync(Settings());
 
         var entry = Assert.Single(auditLog.Entries);
         Assert.Equal("skipped", entry.Action);
@@ -68,7 +68,7 @@ public class MergeCommandTests
             auditLog: auditLog);
         console.Input.PushKey(ConsoleKey.Enter);
 
-        await command.RunAsync(dryRun: true);
+        await command.RunAsync(Settings(dryRun: true));
 
         Assert.Empty(auditLog.Entries);
     }
@@ -79,7 +79,7 @@ public class MergeCommandTests
         var merger = new FakePullRequestMerger();
         var (command, console) = CreateCommand(merger, SearchResponse());
 
-        var exitCode = await command.RunAsync();
+        var exitCode = await command.RunAsync(Settings());
 
         Assert.Equal(0, exitCode);
         Assert.Contains("No Dependabot PRs are ready to merge.", console.Output);
@@ -98,7 +98,7 @@ public class MergeCommandTests
             ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1"));
         console.Input.PushKey(ConsoleKey.Enter);
 
-        var exitCode = await command.RunAsync();
+        var exitCode = await command.RunAsync(Settings());
 
         Assert.Equal(0, exitCode);
         Assert.Contains("left-pad", console.Output);
@@ -116,7 +116,7 @@ public class MergeCommandTests
             SearchResponse(Node(1, "Bump firebase-tools from 11.2.0 to 11.3.1")));
         console.Input.PushKey(ConsoleKey.Enter);
 
-        await command.RunAsync();
+        await command.RunAsync(Settings());
 
         Assert.Contains("11.2.0 -> 11.3.1", console.Output);
     }
@@ -130,7 +130,7 @@ public class MergeCommandTests
             SearchResponse(Node(1, "Bump the aws-sdk group with 3 updates")));
         console.Input.PushKey(ConsoleKey.Enter);
 
-        await command.RunAsync();
+        await command.RunAsync(Settings());
 
         Assert.Contains("Bump the aws-sdk group with 3 updates", console.Output);
     }
@@ -151,7 +151,7 @@ public class MergeCommandTests
             delay: NoOpDelay);
         console.Input.PushKey(ConsoleKey.Enter);
 
-        await command.RunAsync();
+        await command.RunAsync(Settings());
 
         Assert.Contains("[X] sample-repo", console.Output);
     }
@@ -168,7 +168,7 @@ public class MergeCommandTests
             ByNumberResponse(1, "Bump patch-dep from 1.0.0 to 1.0.1"));
         console.Input.PushKey(ConsoleKey.Enter);
 
-        await command.RunAsync();
+        await command.RunAsync(Settings());
 
         Assert.Contains("[ ] sample-repo", console.Output);
         Assert.DoesNotContain("[X] sample-repo", console.Output);
@@ -186,7 +186,7 @@ public class MergeCommandTests
             ByNumberResponse(1, "Bump patch-dep from 1.0.0 to 1.0.1"));
         console.Input.PushKey(ConsoleKey.Enter);
 
-        await command.RunAsync();
+        await command.RunAsync(Settings());
 
         var call = Assert.Single(merger.MergeCalls);
         Assert.Equal(1, call.Pr.Number);
@@ -210,7 +210,7 @@ public class MergeCommandTests
         console.Input.PushKey(ConsoleKey.Spacebar);
         console.Input.PushKey(ConsoleKey.Enter);
 
-        await command.RunAsync();
+        await command.RunAsync(Settings());
 
         Assert.Equal([1, 2], merger.MergeCalls.Select(c => c.Pr.Number).Order());
     }
@@ -235,7 +235,7 @@ public class MergeCommandTests
         console.Input.PushKey(ConsoleKey.Spacebar);
         console.Input.PushKey(ConsoleKey.Enter);
 
-        await command.RunAsync();
+        await command.RunAsync(Settings());
 
         Assert.Equal([1, 2], merger.MergeCalls.Select(c => c.Pr.Number).Order());
     }
@@ -249,7 +249,7 @@ public class MergeCommandTests
             SearchResponse(Node(1, "Bump major-dep from 1.0.0 to 2.0.0")));
         console.Input.PushKey(ConsoleKey.Enter);
 
-        var exitCode = await command.RunAsync();
+        var exitCode = await command.RunAsync(Settings());
 
         Assert.Equal(0, exitCode);
         Assert.Contains("No PRs selected. Nothing merged.", console.Output);
@@ -274,7 +274,7 @@ public class MergeCommandTests
             });
         console.Input.PushKey(ConsoleKey.Enter);
 
-        var exitCode = await command.RunAsync();
+        var exitCode = await command.RunAsync(Settings());
 
         Assert.Equal(0, exitCode);
         Assert.Empty(merger.MergeCalls);
@@ -300,7 +300,7 @@ public class MergeCommandTests
             });
         console.Input.PushKey(ConsoleKey.Enter);
 
-        var exitCode = await command.RunAsync();
+        var exitCode = await command.RunAsync(Settings());
 
         Assert.Equal(0, exitCode);
         var call = Assert.Single(merger.MergeCalls);
@@ -325,7 +325,7 @@ public class MergeCommandTests
             pollTimeout: TimeSpan.FromSeconds(5));
         console.Input.PushKey(ConsoleKey.Enter);
 
-        var exitCode = await command.RunAsync();
+        var exitCode = await command.RunAsync(Settings());
 
         Assert.Equal(0, exitCode);
         Assert.Equal([1, 1], merger.MergeCalls.Select(c => c.Pr.Number));
@@ -351,7 +351,7 @@ public class MergeCommandTests
             pollTimeout: TimeSpan.FromSeconds(1));
         console.Input.PushKey(ConsoleKey.Enter);
 
-        await command.RunAsync();
+        await command.RunAsync(Settings());
 
         Assert.Contains("rebase in progress, polling", console.Output);
     }
@@ -372,7 +372,7 @@ public class MergeCommandTests
             pollTimeout: TimeSpan.FromSeconds(1));
         console.Input.PushKey(ConsoleKey.Enter);
 
-        await command.RunAsync();
+        await command.RunAsync(Settings());
 
         Assert.Contains("polling", console.Output);
         Assert.DoesNotContain("rebase in progress", console.Output);
@@ -399,7 +399,7 @@ public class MergeCommandTests
             pollTimeout: TimeSpan.FromSeconds(10));
         console.Input.PushKey(ConsoleKey.Enter);
 
-        var exitCode = await command.RunAsync();
+        var exitCode = await command.RunAsync(Settings());
 
         Assert.Equal(0, exitCode);
         var wait = Assert.Single(waits);
@@ -424,7 +424,7 @@ public class MergeCommandTests
             pollTimeout: TimeSpan.FromSeconds(2));
         console.Input.PushKey(ConsoleKey.Enter);
 
-        var exitCode = await command.RunAsync();
+        var exitCode = await command.RunAsync(Settings());
 
         Assert.Equal(0, exitCode);
         var call = Assert.Single(merger.MergeCalls);
@@ -450,7 +450,7 @@ public class MergeCommandTests
             });
         console.Input.PushKey(ConsoleKey.Enter);
 
-        var exitCode = await command.RunAsync();
+        var exitCode = await command.RunAsync(Settings());
 
         Assert.Equal(1, exitCode);
         var call = Assert.Single(merger.MergeCalls);
@@ -481,7 +481,7 @@ public class MergeCommandTests
             });
         console.Input.PushKey(ConsoleKey.Enter);
 
-        var exitCode = await command.RunAsync();
+        var exitCode = await command.RunAsync(Settings());
 
         Assert.Equal(1, exitCode);
         Assert.Empty(waits);
@@ -505,7 +505,7 @@ public class MergeCommandTests
             pollTimeout: TimeSpan.FromSeconds(10));
         console.Input.PushKey(ConsoleKey.Enter);
 
-        var exitCode = await command.RunAsync();
+        var exitCode = await command.RunAsync(Settings());
 
         Assert.Equal(1, exitCode);
         Assert.Equal([1, 1], merger.MergeCalls.Select(c => c.Pr.Number));
@@ -522,7 +522,7 @@ public class MergeCommandTests
             """{ "data": { "repository": { "pullRequest": null } } }""");
         console.Input.PushKey(ConsoleKey.Enter);
 
-        var exitCode = await command.RunAsync();
+        var exitCode = await command.RunAsync(Settings());
 
         Assert.Equal(0, exitCode);
         Assert.Empty(merger.MergeCalls);
@@ -550,7 +550,7 @@ public class MergeCommandTests
             });
         console.Input.PushKey(ConsoleKey.Enter);
 
-        await command.RunAsync();
+        await command.RunAsync(Settings());
 
         Assert.Equal(2, merger.MergeCalls.Count);
         Assert.Empty(waits);
@@ -565,7 +565,7 @@ public class MergeCommandTests
             SearchResponse(Node(1, "Bump [special]/pkg from 1.0.0 to 1.0.1")));
         console.Input.PushKey(ConsoleKey.Enter);
 
-        var exitCode = await command.RunAsync();
+        var exitCode = await command.RunAsync(Settings());
 
         Assert.Equal(0, exitCode);
         Assert.Contains("[special]/pkg", console.Output);
@@ -590,7 +590,7 @@ public class MergeCommandTests
             pollTimeout: TimeSpan.FromSeconds(1));
         console.Input.PushKey(ConsoleKey.Enter);
 
-        var exitCode = await command.RunAsync();
+        var exitCode = await command.RunAsync(Settings());
 
         Assert.Equal(0, exitCode);
         Assert.Equal([1, 2], merger.MergeCalls.Select(c => c.Pr.Number));
@@ -611,7 +611,7 @@ public class MergeCommandTests
             ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1"));
         console.Input.PushKey(ConsoleKey.Enter);
 
-        await command.RunAsync(security: true);
+        await command.RunAsync(Settings(security: true));
 
         Assert.Contains("left-pad", console.Output);
         Assert.DoesNotContain("right-pad", console.Output);
@@ -633,7 +633,7 @@ public class MergeCommandTests
         console.Input.PushKey(ConsoleKey.Enter);
         var command = new MergeCommand(restClient, graphQlClient, merger, console, new FakeAuditLog());
 
-        var exitCode = await command.RunAsync("sample-repo");
+        var exitCode = await command.RunAsync(Settings("sample-repo"));
 
         Assert.Equal(0, exitCode);
         Assert.False(source.GetOwnedRepositoriesAsyncWasCalled);
@@ -652,7 +652,7 @@ public class MergeCommandTests
         var console = new TestConsole().Interactive();
         var command = new MergeCommand(restClient, graphQlClient, merger, console, new FakeAuditLog());
 
-        await Assert.ThrowsAsync<RepositoryNotFoundException>(() => command.RunAsync("does-not-exist"));
+        await Assert.ThrowsAsync<RepositoryNotFoundException>(() => command.RunAsync(Settings("does-not-exist")));
 
         Assert.False(source.GetOwnedRepositoriesAsyncWasCalled);
         Assert.Empty(merger.MergeCalls);
@@ -669,7 +669,7 @@ public class MergeCommandTests
                 Node(2, "Bump major-dep from 1.0.0 to 2.0.0")),
             ByNumberResponse(1, "Bump patch-dep from 1.0.0 to 1.0.1"));
 
-        var exitCode = await command.RunAsync(yes: true);
+        var exitCode = await command.RunAsync(Settings(yes: true));
 
         Assert.Equal(0, exitCode);
         var call = Assert.Single(merger.MergeCalls);
@@ -686,7 +686,7 @@ public class MergeCommandTests
             ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1"));
         console.Input.PushKey(ConsoleKey.Enter);
 
-        var exitCode = await command.RunAsync(dryRun: true);
+        var exitCode = await command.RunAsync(Settings(dryRun: true));
 
         Assert.Equal(0, exitCode);
         Assert.Empty(merger.MergeCalls);
@@ -703,7 +703,7 @@ public class MergeCommandTests
             SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1")),
             ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1"));
 
-        var exitCode = await command.RunAsync(yes: true, json: true);
+        var exitCode = await command.RunAsync(Settings(yes: true, json: true));
 
         Assert.Equal(0, exitCode);
         var call = Assert.Single(merger.MergeCalls);
@@ -722,7 +722,7 @@ public class MergeCommandTests
             SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1")),
             ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1"));
 
-        var exitCode = await command.RunAsync(dryRun: true, yes: true);
+        var exitCode = await command.RunAsync(Settings(dryRun: true, yes: true));
 
         Assert.Equal(0, exitCode);
         Assert.Empty(merger.MergeCalls);
@@ -739,7 +739,7 @@ public class MergeCommandTests
             ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1"));
         console.Input.PushKey(ConsoleKey.Enter);
 
-        await command.RunAsync(verbose: true);
+        await command.RunAsync(Settings(verbose: true));
 
         Assert.Contains("Discovered 1 repo(s)", console.Output);
         Assert.Contains("Fetched 1 Dependabot PR(s)", console.Output);
@@ -756,7 +756,7 @@ public class MergeCommandTests
             ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1"));
         console.Input.PushKey(ConsoleKey.Enter);
 
-        await command.RunAsync();
+        await command.RunAsync(Settings());
 
         Assert.DoesNotContain("Discovered", console.Output);
         Assert.DoesNotContain("Refetching state", console.Output);
@@ -771,7 +771,7 @@ public class MergeCommandTests
             SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1")),
             ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1"));
 
-        await command.RunAsync(yes: true, json: true, verbose: true);
+        await command.RunAsync(Settings(yes: true, json: true, verbose: true));
 
         Assert.DoesNotContain("Discovered", console.Output);
         Assert.DoesNotContain("Refetching state", console.Output);
@@ -783,7 +783,7 @@ public class MergeCommandTests
         var merger = new FakePullRequestMerger();
         var (command, console) = CreateCommand(merger, SearchResponse());
 
-        var exitCode = await command.RunAsync(json: true);
+        var exitCode = await command.RunAsync(Settings(json: true));
 
         Assert.Equal(0, exitCode);
         Assert.Contains("\"results\": []", console.Output);
@@ -805,7 +805,7 @@ public class MergeCommandTests
         var command = new MergeCommand(restClient, graphQlClient, merger, console, new FakeAuditLog(), config, NoOpDelay);
         console.Input.PushKey(ConsoleKey.Enter);
 
-        await command.RunAsync();
+        await command.RunAsync(Settings());
 
         Assert.Contains("still not mergeable after 3s", console.Output);
     }
@@ -840,6 +840,10 @@ public class MergeCommandTests
         var command = new MergeCommand(restClient, graphQlClient, merger, console, auditLog ?? new FakeAuditLog(), config, delay);
         return (command, console);
     }
+
+    private static MergeCommand.Settings Settings(
+        string? repo = null, bool security = false, bool dryRun = false, bool yes = false, bool json = false, bool verbose = false) =>
+        new() { Repo = repo, Security = security, DryRun = dryRun, Yes = yes, Json = json, Verbose = verbose };
 
     private static string SearchResponse(params string[] nodes) => $$"""
         {
