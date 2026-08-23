@@ -23,6 +23,7 @@ public static class CompositionRoot
     {
         var cachingAuthenticator = new CachingGitHubAuthenticator(authenticator);
         var configLoader = new ConfigLoader(ConfigLoader.DefaultPath);
+        var config = configLoader.Load();
 
         var services = new ServiceCollection();
 
@@ -31,18 +32,15 @@ public static class CompositionRoot
         services.AddSingleton<IGitHubClient>(_ =>
             new GitHubClient(new Octokit.ProductHeaderValue("chorectl"), new GitHubCredentialStore(cachingAuthenticator)));
         services.AddSingleton<IRepositorySource, OctokitRepositorySource>();
-        services.AddSingleton<IPullRequestMerger, OctokitPullRequestMerger>();
+        services.AddSingleton<IPullRequestMerger>(provider =>
+            new OctokitPullRequestMerger(provider.GetRequiredService<IGitHubClient>(), config.MergeMethod));
         services.AddSingleton<IPullRequestCommenter, OctokitPullRequestCommenter>();
         services.AddSingleton<IPullRequestApprover, OctokitPullRequestApprover>();
         services.AddSingleton<IAuditLog>(new AuditLog(AuditLog.DefaultPath));
-        services.AddSingleton(provider =>
-        {
-            var config = configLoader.Load();
-            return new RestClient(
-                provider.GetRequiredService<IRepositorySource>(),
-                new HashSet<string>(config.ExcludeRepos),
-                config.IncludeForks);
-        });
+        services.AddSingleton(provider => new RestClient(
+            provider.GetRequiredService<IRepositorySource>(),
+            new HashSet<string>(config.ExcludeRepos),
+            config.IncludeForks));
         services.AddSingleton(_ =>
         {
             var httpClient = new HttpClient(new GitHubAuthenticationHandler(cachingAuthenticator) { InnerHandler = new HttpClientHandler() })
