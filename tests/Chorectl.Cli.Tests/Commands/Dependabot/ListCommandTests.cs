@@ -123,6 +123,39 @@ public class ListCommandTests
     }
 
     [Fact]
+    public async Task RunAsync_WithSecurity_FiltersToSecurityUpdatePrsOnly()
+    {
+        var console = new TestConsole();
+        var restClient = new RestClient(new FakeRepositorySource(
+            new RepositoryInfo("octocat", "sample-repo", IsArchived: false, IsFork: false)));
+        var handler = new FakeHttpMessageHandler(TwoNodeResponseWithOneSecurityAlert());
+        var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
+        var command = new ListCommand(restClient, graphQlClient, console);
+
+        var exitCode = await command.RunAsync(security: true);
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("firebase-tools", console.Output);
+        Assert.DoesNotContain("left-pad", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithoutSecurity_ShowsEveryPr()
+    {
+        var console = new TestConsole();
+        var restClient = new RestClient(new FakeRepositorySource(
+            new RepositoryInfo("octocat", "sample-repo", IsArchived: false, IsFork: false)));
+        var handler = new FakeHttpMessageHandler(TwoNodeResponseWithOneSecurityAlert());
+        var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
+        var command = new ListCommand(restClient, graphQlClient, console);
+
+        await command.RunAsync();
+
+        Assert.Contains("firebase-tools", console.Output);
+        Assert.Contains("left-pad", console.Output);
+    }
+
+    [Fact]
     public async Task RunAsync_WithUnknownRepo_ThrowsRepositoryNotFoundException()
     {
         var console = new TestConsole();
@@ -173,6 +206,52 @@ public class ListCommandTests
                   "commits": { "nodes": [ { "commit": { "statusCheckRollup": { "state": "SUCCESS" } } } ] }
                 }
               ]
+            }
+          }
+        }
+        """;
+
+    private static string TwoNodeResponseWithOneSecurityAlert() => """
+        {
+          "data": {
+            "search": {
+              "pageInfo": { "hasNextPage": false, "endCursor": null },
+              "nodes": [
+                {
+                  "number": 42,
+                  "title": "Bump firebase-tools from 11.2.0 to 11.3.1",
+                  "url": "https://github.com/octocat/sample-repo/pull/42",
+                  "headRefName": "dependabot/npm_and_yarn/firebase-tools-11.3.1",
+                  "isDraft": false,
+                  "updatedAt": "2026-08-01T12:00:00Z",
+                  "reviewDecision": "APPROVED",
+                  "mergeStateStatus": "CLEAN",
+                  "repository": { "name": "sample-repo" },
+                  "labels": { "nodes": [] },
+                  "commits": { "nodes": [ { "commit": { "statusCheckRollup": { "state": "SUCCESS" } } } ] }
+                },
+                {
+                  "number": 43,
+                  "title": "Bump left-pad from 1.0.0 to 1.0.1",
+                  "url": "https://github.com/octocat/sample-repo/pull/43",
+                  "headRefName": "dependabot/npm_and_yarn/left-pad-1.0.1",
+                  "isDraft": false,
+                  "updatedAt": "2026-08-01T12:00:00Z",
+                  "reviewDecision": "APPROVED",
+                  "mergeStateStatus": "CLEAN",
+                  "repository": { "name": "sample-repo" },
+                  "labels": { "nodes": [] },
+                  "commits": { "nodes": [ { "commit": { "statusCheckRollup": { "state": "SUCCESS" } } } ] }
+                }
+              ]
+            },
+            "repo0": {
+              "name": "sample-repo",
+              "vulnerabilityAlerts": {
+                "nodes": [
+                  { "dependabotUpdate": { "pullRequest": { "number": 42 } } }
+                ]
+              }
             }
           }
         }

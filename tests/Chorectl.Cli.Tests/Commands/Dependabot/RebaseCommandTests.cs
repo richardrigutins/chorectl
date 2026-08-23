@@ -165,6 +165,44 @@ public class RebaseCommandTests
     }
 
     [Fact]
+    public async Task RunAsync_WithSecurity_FiltersToSecurityUpdatePrsBeforeApplyingNeedsRebase()
+    {
+        var commenter = new FakePullRequestCommenter();
+        var (command, console) = CreateCommand(
+            commenter,
+            [SearchResponseWithSecurityAlert(
+                securityPrNumber: 1,
+                Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"))]);
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        await command.RunAsync(security: true);
+
+        Assert.Contains("left-pad", console.Output);
+        Assert.DoesNotContain("right-pad", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithSecurityAndAll_ShowsEverySecurityPrRegardlessOfRebaseNeed()
+    {
+        var commenter = new FakePullRequestCommenter();
+        var (command, console) = CreateCommand(
+            commenter,
+            [SearchResponseWithSecurityAlert(
+                securityPrNumber: 1,
+                Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "CLEAN"),
+                Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"))]);
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        var exitCode = await command.RunAsync(security: true, all: true);
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("left-pad", console.Output);
+        Assert.DoesNotContain("right-pad", console.Output);
+        Assert.Empty(commenter.CommentCalls);
+    }
+
+    [Fact]
     public async Task RunAsync_WithAllAndNoOpenPrsAtAll_PrintsMessageAndRequestsNothing()
     {
         var commenter = new FakePullRequestCommenter();
@@ -495,6 +533,25 @@ public class RebaseCommandTests
             "search": {
               "pageInfo": { "hasNextPage": false, "endCursor": null },
               "nodes": [ {{string.Join(",", nodes)}} ]
+            }
+          }
+        }
+        """;
+
+    private static string SearchResponseWithSecurityAlert(int securityPrNumber, params string[] nodes) => $$"""
+        {
+          "data": {
+            "search": {
+              "pageInfo": { "hasNextPage": false, "endCursor": null },
+              "nodes": [ {{string.Join(",", nodes)}} ]
+            },
+            "repo0": {
+              "name": "sample-repo",
+              "vulnerabilityAlerts": {
+                "nodes": [
+                  { "dependabotUpdate": { "pullRequest": { "number": {{securityPrNumber}} } } }
+                ]
+              }
             }
           }
         }
