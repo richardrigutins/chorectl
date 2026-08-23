@@ -20,11 +20,6 @@ public static class Queries
           repository {
             name
           }
-          labels(first: 20) {
-            nodes {
-              name
-            }
-          }
           commits(last: 1) {
             nodes {
               commit {
@@ -80,11 +75,6 @@ public static class Queries
               body
               repository {
                 name
-              }
-              labels(first: 20) {
-                nodes {
-                  name
-                }
               }
               commits(last: 1) {
                 nodes {

@@ -1,6 +1,7 @@
 using Chorectl.Cli.Rendering;
 using Chorectl.Cli.Rendering.Dependabot;
 using Chorectl.Core.Audit;
+using Chorectl.Core.Config;
 using Chorectl.Core.Domain.Dependabot;
 using Chorectl.Core.GitHub;
 using Spectre.Console;
@@ -14,45 +15,37 @@ namespace Chorectl.Cli.Commands.Dependabot;
 /// attempted directly with no wait; only a failed merge attempt falls back to polling until the
 /// PR is no longer behind and CI is passing, or the poll timeout elapses.
 /// </summary>
+/// <param name="config">
+/// Supplies <c>merge_poll_interval_seconds</c>/<c>merge_poll_timeout_seconds</c>. Defaults to a
+/// fresh <see cref="ChorectlConfig"/> (15s/120s) when not injected, matching that type's own defaults.
+/// </param>
 public sealed class MergeCommand(
     RestClient restClient,
     GraphQlClient graphQlClient,
     IPullRequestMerger merger,
     IAnsiConsole console,
     IAuditLog auditLog,
-    Func<TimeSpan, CancellationToken, Task>? delay = null,
-    TimeSpan? mergePollInterval = null,
-    TimeSpan? mergePollTimeout = null) : AsyncCommand<MergeCommand.Settings>
+    ChorectlConfig? config = null,
+    Func<TimeSpan, CancellationToken, Task>? delay = null) : AsyncCommand<MergeCommand.Settings>
 {
     public sealed class Settings : ActionSettings;
 
-    // Hardcoded until `chorectl config` (Phase 2) can supply merge_poll_interval_seconds / merge_poll_timeout_seconds.
-    private static readonly TimeSpan DefaultMergePollInterval = TimeSpan.FromSeconds(15);
-    private static readonly TimeSpan DefaultMergePollTimeout = TimeSpan.FromSeconds(120);
-
     private readonly Func<TimeSpan, CancellationToken, Task> delay = delay ?? Task.Delay;
-    private readonly TimeSpan mergePollInterval = mergePollInterval ?? DefaultMergePollInterval;
-    private readonly TimeSpan mergePollTimeout = mergePollTimeout ?? DefaultMergePollTimeout;
+    private readonly TimeSpan mergePollInterval = TimeSpan.FromSeconds((config ?? new ChorectlConfig()).MergePollIntervalSeconds);
+    private readonly TimeSpan mergePollTimeout = TimeSpan.FromSeconds((config ?? new ChorectlConfig()).MergePollTimeoutSeconds);
 
     protected override Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken) =>
-        RunAsync(settings.Repo, settings.Security, settings.DryRun, settings.Yes, settings.Json, settings.Verbose, cancellationToken);
+        RunAsync(settings, cancellationToken);
 
-    public async Task<int> RunAsync(
-        string? repo = null,
-        bool security = false,
-        bool dryRun = false,
-        bool yes = false,
-        bool json = false,
-        bool verbose = false,
-        CancellationToken cancellationToken = default)
+    public async Task<int> RunAsync(Settings settings, CancellationToken cancellationToken = default)
     {
-        var repos = await restClient.DiscoverReposAsync(repo);
-        VerboseLog.Write(console, verbose, json, $"Discovered {repos.Count} repo(s)");
+        var repos = await restClient.DiscoverReposAsync(settings.Repo);
+        VerboseLog.Write(console, settings.Verbose, settings.Json, $"Discovered {repos.Count} repo(s)");
 
         var prs = await graphQlClient.FetchDependabotPrsAsync(repos, cancellationToken);
-        VerboseLog.Write(console, verbose, json, $"Fetched {prs.Count} Dependabot PR(s)");
+        VerboseLog.Write(console, settings.Verbose, settings.Json, $"Fetched {prs.Count} Dependabot PR(s)");
 
-        if (security)
+        if (settings.Security)
         {
             prs = prs.Where(pr => pr.IsSecurityUpdate).ToList();
         }
@@ -61,93 +54,50 @@ public sealed class MergeCommand(
 
         if (ready.Count == 0)
         {
-            return ReportNothingToDo(json, dryRun, "No Dependabot PRs are ready to merge.");
+            return DependabotActionSupport.ReportNothingToDo<MergeResult>(console, settings.Json, settings.DryRun, "No Dependabot PRs are ready to merge.");
         }
 
         // --json can't render an interactive prompt, so it implies --yes for action commands.
-        var selected = yes || json
+        var selected = settings.Yes || settings.Json
             ? ready.Where(Classifier.DefaultSelected).ToList()
             : SelectionScreens.PromptMerge(console, ready);
 
         if (selected.Count == 0)
         {
-            return ReportNothingToDo(json, dryRun, "No PRs selected. Nothing merged.");
+            return DependabotActionSupport.ReportNothingToDo<MergeResult>(console, settings.Json, settings.DryRun, "No PRs selected. Nothing merged.");
         }
 
         var owners = repos.ToDictionary(r => r.Name, r => r.Owner);
 
-        if (!json)
+        if (!settings.Json)
         {
             ProgressDisplay.RenderHeader(console);
         }
 
-        var results = await MergeSelectedAsync(owners, selected, dryRun, json, verbose, cancellationToken);
+        var results = await DependabotActionSupport.ExecuteGroupedByRepoAsync(
+            console,
+            auditLog,
+            owners,
+            selected,
+            settings.DryRun,
+            settings.Json,
+            (owner, pr, ct) => MergeOneAsync(owner, pr, settings.DryRun, settings.Json, settings.Verbose, ct),
+            r => r.Pr,
+            r => DescribeOutcome(r.Outcome),
+            r => r.Reason,
+            ProgressDisplay.RenderResult,
+            cancellationToken);
 
-        if (json)
+        if (settings.Json)
         {
-            JsonOutput.Write(console, new ActionJsonOutput<MergeResult>(dryRun, results));
+            JsonOutput.Write(console, new ActionJsonOutput<MergeResult>(settings.DryRun, results));
         }
         else
         {
-            ProgressDisplay.RenderSummary(console, results, dryRun);
+            ProgressDisplay.RenderSummary(console, results, settings.DryRun);
         }
 
         return results.Any(r => r.Outcome == MergeOutcome.Failed) ? 1 : 0;
-    }
-
-    private int ReportNothingToDo(bool json, bool dryRun, string message)
-    {
-        if (json)
-        {
-            JsonOutput.Write(console, new ActionJsonOutput<MergeResult>(dryRun, []));
-        }
-        else
-        {
-            console.MarkupLine(message);
-        }
-
-        return 0;
-    }
-
-    private async Task<List<MergeResult>> MergeSelectedAsync(
-        IReadOnlyDictionary<string, string> owners,
-        IReadOnlyList<DependabotPr> selected,
-        bool dryRun,
-        bool json,
-        bool verbose,
-        CancellationToken cancellationToken)
-    {
-        var results = new List<MergeResult>();
-
-        foreach (var group in selected.GroupBy(pr => pr.Repo))
-        {
-            var owner = owners[group.Key];
-            if (!json)
-            {
-                ProgressDisplay.RenderRepoHeader(console, group.Key);
-            }
-
-            foreach (var pr in group)
-            {
-                var result = await MergeOneAsync(owner, pr, dryRun, json, verbose, cancellationToken);
-                results.Add(result);
-
-                // Dry run performs no actual mutation, so nothing is recorded (AC-08.1).
-                if (!dryRun)
-                {
-                    await auditLog.RecordAsync(
-                        new AuditEntry(DateTimeOffset.UtcNow, result.Pr.Repo, result.Pr.Number, DescribeOutcome(result.Outcome), result.Reason),
-                        cancellationToken);
-                }
-
-                if (!json)
-                {
-                    ProgressDisplay.RenderResult(console, result);
-                }
-            }
-        }
-
-        return results;
     }
 
     private async Task<MergeResult> MergeOneAsync(string owner, DependabotPr pr, bool dryRun, bool json, bool verbose, CancellationToken cancellationToken)

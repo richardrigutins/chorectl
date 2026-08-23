@@ -17,7 +17,7 @@ public class RebaseCommandTests
             auditLog: auditLog);
         console.Input.PushKey(ConsoleKey.Enter);
 
-        await command.RunAsync();
+        await command.RunAsync(Settings());
 
         var entry = Assert.Single(auditLog.Entries);
         Assert.Equal("sample-repo", entry.Repo);
@@ -37,7 +37,7 @@ public class RebaseCommandTests
             auditLog: auditLog);
         console.Input.PushKey(ConsoleKey.Enter);
 
-        await command.RunAsync();
+        await command.RunAsync(Settings());
 
         var entry = Assert.Single(auditLog.Entries);
         Assert.Equal("failed", entry.Action);
@@ -55,7 +55,7 @@ public class RebaseCommandTests
             auditLog: auditLog);
         console.Input.PushKey(ConsoleKey.Enter);
 
-        await command.RunAsync(dryRun: true);
+        await command.RunAsync(Settings(dryRun: true));
 
         Assert.Empty(auditLog.Entries);
     }
@@ -66,7 +66,7 @@ public class RebaseCommandTests
         var commenter = new FakePullRequestCommenter();
         var (command, console) = CreateCommand(commenter, SearchResponse());
 
-        var exitCode = await command.RunAsync();
+        var exitCode = await command.RunAsync(Settings());
 
         Assert.Equal(0, exitCode);
         Assert.Contains("No Dependabot PRs need a rebase.", console.Output);
@@ -84,7 +84,7 @@ public class RebaseCommandTests
                 Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "CLEAN")));
         console.Input.PushKey(ConsoleKey.Enter);
 
-        await command.RunAsync();
+        await command.RunAsync(Settings());
 
         Assert.Contains("left-pad", console.Output);
         Assert.DoesNotContain("right-pad", console.Output);
@@ -101,7 +101,7 @@ public class RebaseCommandTests
                 Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "CLEAN")));
         console.Input.PushKey(ConsoleKey.Enter);
 
-        var exitCode = await command.RunAsync(all: true);
+        var exitCode = await command.RunAsync(Settings(all: true));
 
         Assert.Equal(0, exitCode);
         Assert.Contains("right-pad", console.Output);
@@ -124,7 +124,7 @@ public class RebaseCommandTests
         console.Input.PushKey(ConsoleKey.Spacebar);
         console.Input.PushKey(ConsoleKey.Enter);
 
-        await command.RunAsync(all: true);
+        await command.RunAsync(Settings(all: true));
 
         Assert.Equal([1, 2], commenter.CommentCalls.Select(c => c.Pr.Number).Order());
     }
@@ -139,7 +139,7 @@ public class RebaseCommandTests
                 Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
                 Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "CLEAN")));
 
-        var exitCode = await command.RunAsync(all: true, yes: true);
+        var exitCode = await command.RunAsync(Settings(all: true, yes: true));
 
         Assert.Equal(0, exitCode);
         var call = Assert.Single(commenter.CommentCalls);
@@ -157,7 +157,7 @@ public class RebaseCommandTests
                 Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "CLEAN")));
         console.Input.PushKey(ConsoleKey.Enter);
 
-        await command.RunAsync();
+        await command.RunAsync(Settings());
 
         Assert.DoesNotContain("right-pad", console.Output);
         var call = Assert.Single(commenter.CommentCalls);
@@ -176,7 +176,7 @@ public class RebaseCommandTests
                 Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"))]);
         console.Input.PushKey(ConsoleKey.Enter);
 
-        await command.RunAsync(security: true);
+        await command.RunAsync(Settings(security: true));
 
         Assert.Contains("left-pad", console.Output);
         Assert.DoesNotContain("right-pad", console.Output);
@@ -194,7 +194,7 @@ public class RebaseCommandTests
                 Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"))]);
         console.Input.PushKey(ConsoleKey.Enter);
 
-        var exitCode = await command.RunAsync(security: true, all: true);
+        var exitCode = await command.RunAsync(Settings(security: true, all: true));
 
         Assert.Equal(0, exitCode);
         Assert.Contains("left-pad", console.Output);
@@ -208,7 +208,7 @@ public class RebaseCommandTests
         var commenter = new FakePullRequestCommenter();
         var (command, console) = CreateCommand(commenter, SearchResponse());
 
-        var exitCode = await command.RunAsync(all: true);
+        var exitCode = await command.RunAsync(Settings(all: true));
 
         Assert.Equal(0, exitCode);
         Assert.Contains("No open Dependabot PRs.", console.Output);
@@ -226,7 +226,7 @@ public class RebaseCommandTests
                 Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")));
         console.Input.PushKey(ConsoleKey.Enter);
 
-        await command.RunAsync();
+        await command.RunAsync(Settings());
 
         Assert.Equal([1, 2], commenter.CommentCalls.Select(c => c.Pr.Number).Order());
     }
@@ -242,7 +242,7 @@ public class RebaseCommandTests
                 Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY")));
         console.Input.PushKey(ConsoleKey.Enter);
 
-        var exitCode = await command.RunAsync();
+        var exitCode = await command.RunAsync(Settings());
 
         Assert.Equal(0, exitCode);
         Assert.Equal([1, 2], commenter.CommentCalls.Select(c => c.Pr.Number).Order());
@@ -263,7 +263,7 @@ public class RebaseCommandTests
                 Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")));
         console.Input.PushKey(ConsoleKey.Enter);
 
-        await command.RunAsync();
+        await command.RunAsync(Settings());
 
         var call = Assert.Single(commenter.CommentCalls);
         Assert.Equal(2, call.Pr.Number);
@@ -280,7 +280,7 @@ public class RebaseCommandTests
         console.Input.PushKey(ConsoleKey.Spacebar);
         console.Input.PushKey(ConsoleKey.Enter);
 
-        var exitCode = await command.RunAsync();
+        var exitCode = await command.RunAsync(Settings());
 
         Assert.Equal(0, exitCode);
         Assert.Contains("No PRs selected. Nothing requested.", console.Output);
@@ -296,7 +296,7 @@ public class RebaseCommandTests
             SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")));
         console.Input.PushKey(ConsoleKey.Enter);
 
-        var exitCode = await command.RunAsync();
+        var exitCode = await command.RunAsync(Settings());
 
         Assert.Equal(0, exitCode);
         var call = Assert.Single(commenter.CommentCalls);
@@ -313,7 +313,7 @@ public class RebaseCommandTests
             SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")));
         console.Input.PushKey(ConsoleKey.Enter);
 
-        var exitCode = await command.RunAsync();
+        var exitCode = await command.RunAsync(Settings());
 
         Assert.Equal(1, exitCode);
         Assert.Contains("failed — insufficient permission to comment", console.Output);
@@ -333,7 +333,7 @@ public class RebaseCommandTests
             SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")));
         console.Input.PushKey(ConsoleKey.Enter);
 
-        var exitCode = await command.RunAsync();
+        var exitCode = await command.RunAsync(Settings());
 
         Assert.Equal(1, exitCode);
         Assert.Contains("failed — unexpected error, likely a tool bug", console.Output);
@@ -351,7 +351,7 @@ public class RebaseCommandTests
                 Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")));
         console.Input.PushKey(ConsoleKey.Enter);
 
-        var exitCode = await command.RunAsync();
+        var exitCode = await command.RunAsync(Settings());
 
         Assert.Equal(1, exitCode);
         Assert.Equal([1, 2], commenter.CommentCalls.Select(c => c.Pr.Number).Order());
@@ -367,7 +367,7 @@ public class RebaseCommandTests
             [SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"))]);
         console.Input.PushKey(ConsoleKey.Enter);
 
-        await command.RunAsync(verbose: true);
+        await command.RunAsync(Settings(verbose: true));
 
         Assert.Contains("Discovered 1 repo(s)", console.Output);
         Assert.Contains("Fetched 1 Dependabot PR(s)", console.Output);
@@ -382,7 +382,7 @@ public class RebaseCommandTests
             [SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"))]);
         console.Input.PushKey(ConsoleKey.Enter);
 
-        await command.RunAsync();
+        await command.RunAsync(Settings());
 
         Assert.DoesNotContain("Discovered", console.Output);
         Assert.DoesNotContain("Fetched", console.Output);
@@ -396,7 +396,7 @@ public class RebaseCommandTests
             commenter,
             [SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"))]);
 
-        await command.RunAsync(yes: true, json: true, verbose: true);
+        await command.RunAsync(Settings(yes: true, json: true, verbose: true));
 
         Assert.DoesNotContain("Discovered", console.Output);
         Assert.DoesNotContain("Fetched", console.Output);
@@ -417,7 +417,7 @@ public class RebaseCommandTests
         console.Input.PushKey(ConsoleKey.Enter);
         var command = new RebaseCommand(restClient, graphQlClient, commenter, console, new FakeAuditLog());
 
-        var exitCode = await command.RunAsync("sample-repo");
+        var exitCode = await command.RunAsync(Settings("sample-repo"));
 
         Assert.Equal(0, exitCode);
         Assert.False(source.GetOwnedRepositoriesAsyncWasCalled);
@@ -436,7 +436,7 @@ public class RebaseCommandTests
         var console = new TestConsole().Interactive();
         var command = new RebaseCommand(restClient, graphQlClient, commenter, console, new FakeAuditLog());
 
-        await Assert.ThrowsAsync<RepositoryNotFoundException>(() => command.RunAsync("does-not-exist"));
+        await Assert.ThrowsAsync<RepositoryNotFoundException>(() => command.RunAsync(Settings("does-not-exist")));
 
         Assert.False(source.GetOwnedRepositoriesAsyncWasCalled);
         Assert.Empty(commenter.CommentCalls);
@@ -453,7 +453,7 @@ public class RebaseCommandTests
                     body: "Dependabot is rebasing this PR due to a merge conflict."),
                 Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")));
 
-        var exitCode = await command.RunAsync(yes: true);
+        var exitCode = await command.RunAsync(Settings(yes: true));
 
         Assert.Equal(0, exitCode);
         var call = Assert.Single(commenter.CommentCalls);
@@ -469,7 +469,7 @@ public class RebaseCommandTests
             SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")));
         console.Input.PushKey(ConsoleKey.Enter);
 
-        var exitCode = await command.RunAsync(dryRun: true);
+        var exitCode = await command.RunAsync(Settings(dryRun: true));
 
         Assert.Equal(0, exitCode);
         Assert.Empty(commenter.CommentCalls);
@@ -485,7 +485,7 @@ public class RebaseCommandTests
             commenter,
             SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")));
 
-        var exitCode = await command.RunAsync(json: true);
+        var exitCode = await command.RunAsync(Settings(json: true));
 
         Assert.Equal(0, exitCode);
         var call = Assert.Single(commenter.CommentCalls);
@@ -502,7 +502,7 @@ public class RebaseCommandTests
             SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND",
                 body: "Bumps left-pad from 1.0.0 to 1.0.1.\\n<details><summary>Changelog</summary>...</details>")));
 
-        await command.RunAsync(json: true);
+        await command.RunAsync(Settings(json: true));
 
         Assert.DoesNotContain("\"body\"", console.Output);
         Assert.DoesNotContain("Changelog", console.Output);
@@ -526,6 +526,10 @@ public class RebaseCommandTests
         var command = new RebaseCommand(restClient, graphQlClient, commenter, console, auditLog ?? new FakeAuditLog());
         return (command, console);
     }
+
+    private static RebaseCommand.Settings Settings(
+        string? repo = null, bool security = false, bool all = false, bool dryRun = false, bool yes = false, bool json = false, bool verbose = false) =>
+        new() { Repo = repo, Security = security, All = all, DryRun = dryRun, Yes = yes, Json = json, Verbose = verbose };
 
     private static string SearchResponse(params string[] nodes) => $$"""
         {

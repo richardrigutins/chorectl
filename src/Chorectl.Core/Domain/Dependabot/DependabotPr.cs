@@ -22,9 +22,6 @@ public sealed record DependabotPr
     /// <summary>Name of the PR's head branch.</summary>
     public required string HeadRefName { get; init; }
 
-    /// <summary>Dependency ecosystem, parsed from labels (e.g. npm, nuget, github-actions).</summary>
-    public string? Ecosystem { get; init; }
-
     /// <summary>Name of the dependency being updated, parsed from the title.</summary>
     public string? DependencyName { get; init; }
 

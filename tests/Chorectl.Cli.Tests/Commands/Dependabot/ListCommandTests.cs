@@ -14,7 +14,7 @@ public class ListCommandTests
         var graphQlClient = new GraphQlClient(new HttpClient(new FakeHttpMessageHandler()) { BaseAddress = new Uri("https://api.github.com/") });
         var command = new ListCommand(restClient, graphQlClient, console);
 
-        await command.RunAsync();
+        await command.RunAsync(Settings());
 
         Assert.Contains("No open Dependabot PRs found.", console.Output);
     }
@@ -29,7 +29,7 @@ public class ListCommandTests
         var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
         var command = new ListCommand(restClient, graphQlClient, console);
 
-        var exitCode = await command.RunAsync();
+        var exitCode = await command.RunAsync(Settings());
 
         Assert.Equal(0, exitCode);
         Assert.Contains("sample-repo", console.Output);
@@ -48,7 +48,7 @@ public class ListCommandTests
         var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
         var command = new ListCommand(restClient, graphQlClient, console);
 
-        var exitCode = await command.RunAsync("sample-repo");
+        var exitCode = await command.RunAsync(Settings("sample-repo"));
 
         Assert.Equal(0, exitCode);
         Assert.False(source.GetOwnedRepositoriesAsyncWasCalled);
@@ -66,7 +66,7 @@ public class ListCommandTests
         var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
         var command = new ListCommand(restClient, graphQlClient, console);
 
-        var exitCode = await command.RunAsync(json: true);
+        var exitCode = await command.RunAsync(Settings(json: true));
 
         Assert.Equal(0, exitCode);
         Assert.Contains("\"number\": 42", console.Output);
@@ -84,7 +84,7 @@ public class ListCommandTests
         var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
         var command = new ListCommand(restClient, graphQlClient, console);
 
-        await command.RunAsync(verbose: true);
+        await command.RunAsync(Settings(verbose: true));
 
         Assert.Contains("Discovered 1 repo(s)", console.Output);
         Assert.Contains("Fetched 1 Dependabot PR(s)", console.Output);
@@ -100,7 +100,7 @@ public class ListCommandTests
         var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
         var command = new ListCommand(restClient, graphQlClient, console);
 
-        await command.RunAsync();
+        await command.RunAsync(Settings());
 
         Assert.DoesNotContain("Discovered", console.Output);
         Assert.DoesNotContain("Fetched", console.Output);
@@ -116,7 +116,7 @@ public class ListCommandTests
         var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
         var command = new ListCommand(restClient, graphQlClient, console);
 
-        await command.RunAsync(verbose: true, json: true);
+        await command.RunAsync(Settings(verbose: true, json: true));
 
         Assert.DoesNotContain("Discovered", console.Output);
         Assert.DoesNotContain("Fetched", console.Output);
@@ -132,7 +132,7 @@ public class ListCommandTests
         var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
         var command = new ListCommand(restClient, graphQlClient, console);
 
-        var exitCode = await command.RunAsync(security: true);
+        var exitCode = await command.RunAsync(Settings(security: true));
 
         Assert.Equal(0, exitCode);
         Assert.Contains("firebase-tools", console.Output);
@@ -149,7 +149,7 @@ public class ListCommandTests
         var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
         var command = new ListCommand(restClient, graphQlClient, console);
 
-        await command.RunAsync();
+        await command.RunAsync(Settings());
 
         Assert.Contains("firebase-tools", console.Output);
         Assert.Contains("left-pad", console.Output);
@@ -165,7 +165,7 @@ public class ListCommandTests
         var graphQlClient = new GraphQlClient(new HttpClient(new FakeHttpMessageHandler()) { BaseAddress = new Uri("https://api.github.com/") });
         var command = new ListCommand(restClient, graphQlClient, console);
 
-        await Assert.ThrowsAsync<RepositoryNotFoundException>(() => command.RunAsync("does-not-exist"));
+        await Assert.ThrowsAsync<RepositoryNotFoundException>(() => command.RunAsync(Settings("does-not-exist")));
 
         Assert.False(source.GetOwnedRepositoriesAsyncWasCalled);
     }
@@ -181,10 +181,13 @@ public class ListCommandTests
         var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
         var command = new ListCommand(restClient, graphQlClient, console);
 
-        await command.RunAsync();
+        await command.RunAsync(Settings());
 
         Assert.Contains("No open Dependabot PRs found.", console.Output);
     }
+
+    private static ListCommand.Settings Settings(string? repo = null, bool security = false, bool json = false, bool verbose = false) =>
+        new() { Repo = repo, Security = security, Json = json, Verbose = verbose };
 
     private static string SingleNodeResponse() => """
         {
