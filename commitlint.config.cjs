@@ -4,4 +4,6 @@ module.exports = {
     // allow sentence-case subjects (e.g. dependabot's "Bump x from y to z"); still blocks start/pascal/upper-case
     'subject-case': [2, 'never', ['start-case', 'pascal-case', 'upper-case']],
   },
+  // dependabot's auto-generated commit bodies routinely exceed body-max-line-length with changelog links
+  ignores: [(commit) => commit.includes('Signed-off-by: dependabot[bot]')],
 };
