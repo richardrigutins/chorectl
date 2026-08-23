@@ -329,6 +329,7 @@ public class MergeCommandTests
         Assert.Equal(0, exitCode);
         Assert.Equal([1, 1], merger.MergeCalls.Select(c => c.Pr.Number));
         Assert.Contains("polling", console.Output);
+        Assert.Contains("4s left", console.Output);
         Assert.Contains("merged", console.Output);
     }
 
