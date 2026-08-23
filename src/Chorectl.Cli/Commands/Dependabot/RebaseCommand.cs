@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using Chorectl.Cli.Rendering;
 using Chorectl.Cli.Rendering.Dependabot;
 using Chorectl.Core.Audit;
@@ -20,15 +21,21 @@ public sealed class RebaseCommand(
     IAnsiConsole console,
     IAuditLog auditLog) : AsyncCommand<RebaseCommand.Settings>
 {
-    public sealed class Settings : ActionSettings;
+    public sealed class Settings : ActionSettings
+    {
+        [CommandOption("--all")]
+        [Description("Widen the candidate set to every open Dependabot PR, not just ones needing a rebase. PRs that need one stay pre-selected; the rest require explicit opt-in.")]
+        public bool All { get; init; }
+    }
 
     private const string RebaseComment = "@dependabot rebase";
 
     protected override Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken) =>
-        RunAsync(settings.Repo, settings.DryRun, settings.Yes, settings.Json, settings.Verbose, cancellationToken);
+        RunAsync(settings.Repo, settings.All, settings.DryRun, settings.Yes, settings.Json, settings.Verbose, cancellationToken);
 
     public async Task<int> RunAsync(
         string? repo = null,
+        bool all = false,
         bool dryRun = false,
         bool yes = false,
         bool json = false,
@@ -41,17 +48,18 @@ public sealed class RebaseCommand(
         var prs = await graphQlClient.FetchDependabotPrsAsync(repos, cancellationToken);
         VerboseLog.Write(console, verbose, json, $"Fetched {prs.Count} Dependabot PR(s)");
 
-        var needsRebase = prs.Where(Classifier.NeedsRebase).OrderBy(p => p.Repo).ThenBy(p => p.Number).ToList();
+        var candidates = (all ? prs : prs.Where(Classifier.NeedsRebase))
+            .OrderBy(p => p.Repo).ThenBy(p => p.Number).ToList();
 
-        if (needsRebase.Count == 0)
+        if (candidates.Count == 0)
         {
-            return ReportNothingToDo(json, dryRun, "No Dependabot PRs need a rebase.");
+            return ReportNothingToDo(json, dryRun, all ? "No open Dependabot PRs." : "No Dependabot PRs need a rebase.");
         }
 
         // --json can't render an interactive prompt, so it implies --yes for action commands.
         var selected = yes || json
-            ? needsRebase.Where(pr => !Classifier.HasRebaseBanner(pr)).ToList()
-            : SelectionScreens.PromptRebase(console, needsRebase);
+            ? candidates.Where(pr => Classifier.NeedsRebase(pr) && !Classifier.HasRebaseBanner(pr)).ToList()
+            : SelectionScreens.PromptRebase(console, candidates);
 
         if (selected.Count == 0)
         {

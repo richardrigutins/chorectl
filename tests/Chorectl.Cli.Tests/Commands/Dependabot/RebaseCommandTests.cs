@@ -91,6 +91,93 @@ public class RebaseCommandTests
     }
 
     [Fact]
+    public async Task RunAsync_WithAll_WidensCandidateSetButLeavesNonRebasePrsUnselectedByDefault()
+    {
+        var commenter = new FakePullRequestCommenter();
+        var (command, console) = CreateCommand(
+            commenter,
+            SearchResponse(
+                Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "CLEAN")));
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        var exitCode = await command.RunAsync(all: true);
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("right-pad", console.Output);
+        var call = Assert.Single(commenter.CommentCalls);
+        Assert.Equal(1, call.Pr.Number);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithAll_AllowsExplicitOptInForPrsNotNeedingRebase()
+    {
+        var commenter = new FakePullRequestCommenter();
+        var (command, console) = CreateCommand(
+            commenter,
+            SearchResponse(
+                Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "CLEAN")));
+        // Cursor starts on the group header; Down moves to #1 (preselected), Down again to #2 (opt in).
+        console.Input.PushKey(ConsoleKey.DownArrow);
+        console.Input.PushKey(ConsoleKey.DownArrow);
+        console.Input.PushKey(ConsoleKey.Spacebar);
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        await command.RunAsync(all: true);
+
+        Assert.Equal([1, 2], commenter.CommentCalls.Select(c => c.Pr.Number).Order());
+    }
+
+    [Fact]
+    public async Task RunAsync_WithAllAndYes_OnlyActsOnPrsNeedingRebase()
+    {
+        var commenter = new FakePullRequestCommenter();
+        var (command, console) = CreateCommand(
+            commenter,
+            SearchResponse(
+                Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "CLEAN")));
+
+        var exitCode = await command.RunAsync(all: true, yes: true);
+
+        Assert.Equal(0, exitCode);
+        var call = Assert.Single(commenter.CommentCalls);
+        Assert.Equal(1, call.Pr.Number);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithoutAll_OnlyOffersPrsNeedingRebaseEvenIfOthersAreOpen()
+    {
+        var commenter = new FakePullRequestCommenter();
+        var (command, console) = CreateCommand(
+            commenter,
+            SearchResponse(
+                Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "CLEAN")));
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        await command.RunAsync();
+
+        Assert.DoesNotContain("right-pad", console.Output);
+        var call = Assert.Single(commenter.CommentCalls);
+        Assert.Equal(1, call.Pr.Number);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithAllAndNoOpenPrsAtAll_PrintsMessageAndRequestsNothing()
+    {
+        var commenter = new FakePullRequestCommenter();
+        var (command, console) = CreateCommand(commenter, SearchResponse());
+
+        var exitCode = await command.RunAsync(all: true);
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("No open Dependabot PRs.", console.Output);
+        Assert.Empty(commenter.CommentCalls);
+    }
+
+    [Fact]
     public async Task RunAsync_IncludesDirtyAndBehindPrs()
     {
         var commenter = new FakePullRequestCommenter();
