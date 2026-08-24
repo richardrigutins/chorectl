@@ -54,6 +54,34 @@ public class MergeCommandTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenAuditLogWriteFails_StillProcessesTheRestOfTheBatchAndWarns()
+    {
+        var merger = new FakePullRequestMerger();
+        var auditLog = new FakeAuditLog { FailWith = new IOException("disk full") };
+        var (command, console) = CreateCommand(
+            merger,
+            [
+                SearchResponse(
+                    Node(1, "Bump patch-dep from 1.0.0 to 1.0.1"),
+                    Node(2, "Bump minor-dep from 1.0.0 to 1.1.0")),
+                ByNumberResponse(1, "Bump patch-dep from 1.0.0 to 1.0.1"),
+                ByNumberResponse(2, "Bump minor-dep from 1.0.0 to 1.1.0"),
+            ],
+            delay: NoOpDelay,
+            auditLog: auditLog);
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        var exitCode = await command.RunAsync(Settings());
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal([1, 2], merger.MergeCalls.Select(c => c.Pr.Number).OrderBy(n => n));
+        Assert.Empty(auditLog.Entries);
+        Assert.Contains("Warning:", console.Output);
+        Assert.Contains("disk full", console.Output);
+        Assert.Contains("Done: 2 merged, 0 skipped, 0 failed", console.Output);
+    }
+
+    [Fact]
     public async Task RunAsync_WithDryRun_RecordsNoAuditEntries()
     {
         var merger = new FakePullRequestMerger();

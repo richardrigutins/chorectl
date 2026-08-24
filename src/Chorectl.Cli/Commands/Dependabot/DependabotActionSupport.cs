@@ -90,10 +90,7 @@ internal static class DependabotActionSupport
                 // Dry run performs no actual mutation, so nothing is recorded (AC-08.1).
                 if (!dryRun)
                 {
-                    var resultPr = pr(result);
-                    await auditLog.RecordAsync(
-                        new AuditEntry(DateTimeOffset.UtcNow, resultPr.Repo, resultPr.Number, describeOutcome(result), reason(result)),
-                        cancellationToken);
+                    await TryRecordAuditEntryAsync(console, auditLog, json, pr(result), describeOutcome(result), reason(result), cancellationToken);
                 }
 
                 if (!json)
@@ -104,5 +101,35 @@ internal static class DependabotActionSupport
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// Records one audit entry, degrading to a console warning instead of propagating if the
+    /// write itself fails (e.g. a permission error or a full disk under the audit log path). By
+    /// the time this runs, the GitHub mutation for this PR - and possibly others already in this
+    /// batch - has already happened; letting an audit-log failure abort the rest of the batch
+    /// would contradict the "one failing PR never aborts the whole batch" principle (§4.8), just
+    /// for a side channel that isn't the PR action itself.
+    /// </summary>
+    private static async Task TryRecordAuditEntryAsync(
+        IAnsiConsole console,
+        IAuditLog auditLog,
+        bool json,
+        DependabotPr pr,
+        string action,
+        string? reason,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await auditLog.RecordAsync(new AuditEntry(DateTimeOffset.UtcNow, pr.Repo, pr.Number, action, reason), cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            if (!json)
+            {
+                console.MarkupLine($"[yellow]Warning:[/] failed to record audit log entry for {pr.Repo.EscapeMarkup()}#{pr.Number} - {ex.Message.EscapeMarkup()}");
+            }
+        }
     }
 }
