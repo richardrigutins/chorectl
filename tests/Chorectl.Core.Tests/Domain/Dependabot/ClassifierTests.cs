@@ -108,6 +108,18 @@ public class ClassifierTests
         Assert.False(Classifier.DefaultSelected(pr));
     }
 
+    [Fact]
+    public void IsReadyToMerge_AndNeedsRebase_TreatAnUnrecognizedMergeStateStatusLikeClean()
+    {
+        // MergeStateStatus is a raw GitHub API passthrough, not a closed set on our side - a
+        // future value GitHub hasn't introduced yet should degrade gracefully (behave like a
+        // non-blocking state) rather than the tool breaking on it.
+        var pr = CreatePr(mergeStateStatus: "SOME_FUTURE_STATE_GITHUB_HASNT_INVENTED_YET");
+
+        Assert.True(Classifier.IsReadyToMerge(pr));
+        Assert.False(Classifier.NeedsRebase(pr));
+    }
+
     [Theory]
     [InlineData(null, false)]
     [InlineData("Just a regular PR description.", false)]

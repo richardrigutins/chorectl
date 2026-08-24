@@ -64,11 +64,11 @@ public static class OverviewTable
 
     private static string MergeSymbol(string mergeStateStatus) => mergeStateStatus switch
     {
-        "CLEAN" => "[green]✔ clean[/]",
-        "DIRTY" => "[yellow]⚠ conflicts[/]",
-        "BEHIND" => "[yellow]⚠ behind[/]",
-        "BLOCKED" => "[yellow]⚠ blocked[/]",
-        "UNSTABLE" => "[yellow]⚠ unstable[/]",
+        MergeStateStatuses.Clean => "[green]✔ clean[/]",
+        MergeStateStatuses.Dirty => "[yellow]⚠ conflicts[/]",
+        MergeStateStatuses.Behind => "[yellow]⚠ behind[/]",
+        MergeStateStatuses.Blocked => "[yellow]⚠ blocked[/]",
+        MergeStateStatuses.Unstable => "[yellow]⚠ unstable[/]",
         _ => $"○ {mergeStateStatus.ToLowerInvariant()}",
     };
 

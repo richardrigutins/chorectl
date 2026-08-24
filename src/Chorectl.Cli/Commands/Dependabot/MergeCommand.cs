@@ -166,14 +166,14 @@ public sealed class MergeCommand(
             current = refetched;
 
             // Stop polling immediately rather than running out the full timeout (AC-03.5).
-            if (current.MergeStateStatus == "DIRTY")
+            if (current.MergeStateStatus == MergeStateStatuses.Dirty)
             {
                 return new MergeResult(current, MergeOutcome.Skipped, "became conflicting while waiting");
             }
 
             // Retry once no longer behind *and* CI is passing on the current head - not just
             // once the conflict state clears (AC-03.4).
-            if (current.MergeStateStatus != "BEHIND" && current.Ci == CiStatus.Passing)
+            if (current.MergeStateStatus != MergeStateStatuses.Behind && current.Ci == CiStatus.Passing)
             {
                 try
                 {
@@ -211,7 +211,7 @@ public sealed class MergeCommand(
     };
 
     private static string DescribeNotReady(DependabotPr pr) =>
-        pr.MergeStateStatus == "DIRTY" ? "conflicting"
+        pr.MergeStateStatus == MergeStateStatuses.Dirty ? "conflicting"
         : pr.Ci == CiStatus.Failing ? "state changed (checks now failing)"
         : pr.Ci == CiStatus.Pending ? "state changed (checks still pending)"
         : pr.Review == ReviewStatus.ReviewRequired ? "state changed (now requires review)"

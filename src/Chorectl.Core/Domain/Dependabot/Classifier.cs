@@ -14,12 +14,12 @@ public static class Classifier
     public static bool IsReadyToMerge(DependabotPr pr) =>
         pr.Ci == CiStatus.Passing
         && pr.Review != ReviewStatus.ReviewRequired
-        && pr.MergeStateStatus != "DIRTY"
+        && pr.MergeStateStatus != MergeStateStatuses.Dirty
         && !pr.IsDraft;
 
     /// <summary>Whether a PR needs a rebase before it can be merged.</summary>
     public static bool NeedsRebase(DependabotPr pr) =>
-        pr.MergeStateStatus is "DIRTY" or "BEHIND";
+        pr.MergeStateStatus is MergeStateStatuses.Dirty or MergeStateStatuses.Behind;
 
     /// <summary>Whether a PR is blocked on a required review.</summary>
     public static bool NeedsApproval(DependabotPr pr) =>
