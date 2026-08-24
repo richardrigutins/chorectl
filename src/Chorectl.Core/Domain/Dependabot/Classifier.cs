@@ -1,3 +1,5 @@
+using Chorectl.Core.Config;
+
 namespace Chorectl.Core.Domain.Dependabot;
 
 /// <summary>
@@ -26,16 +28,26 @@ public static class Classifier
         pr.Review == ReviewStatus.ReviewRequired;
 
     /// <summary>
-    /// Whether a PR should be pre-selected on the merge screen. Grouped updates are excluded
-    /// regardless of semver level - a group can bundle a major bump under a patch-looking title.
-    /// Security updates are excluded regardless of semver level too - they deserve a manual look
-    /// even at patch level.
+    /// Whether a PR should be pre-selected on the merge screen, per <paramref name="defaultSelect"/>
+    /// (the user's <c>default_select.*</c> config). An <see cref="SemverLevel.Unknown"/> bump is
+    /// never pre-selected regardless of config - an unparseable version isn't a known risk level
+    /// the user can opt into, unlike major. Security updates are excluded regardless of semver
+    /// level or config too - they deserve a manual look even at patch level (there's no
+    /// <c>default_select.security</c> toggle by design).
     /// </summary>
-    public static bool DefaultSelected(DependabotPr pr) =>
+    public static bool DefaultSelected(DependabotPr pr, DefaultSelectConfig defaultSelect) =>
         IsReadyToMerge(pr)
-        && pr.SemverLevel is SemverLevel.Patch or SemverLevel.Minor
-        && !pr.IsGrouped
+        && IsSemverLevelAllowed(pr.SemverLevel, defaultSelect)
+        && (defaultSelect.Grouped || !pr.IsGrouped)
         && !pr.IsSecurityUpdate;
+
+    private static bool IsSemverLevelAllowed(SemverLevel level, DefaultSelectConfig defaultSelect) => level switch
+    {
+        SemverLevel.Patch => defaultSelect.Patch,
+        SemverLevel.Minor => defaultSelect.Minor,
+        SemverLevel.Major => defaultSelect.Major,
+        _ => false,
+    };
 
     /// <summary>
     /// Whether the PR body currently carries Dependabot's temporary rebase-in-progress banner.

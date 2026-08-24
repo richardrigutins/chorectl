@@ -16,8 +16,9 @@ namespace Chorectl.Cli.Commands.Dependabot;
 /// PR is no longer behind and CI is passing, or the poll timeout elapses.
 /// </summary>
 /// <param name="config">
-/// Supplies <c>merge_poll_interval_seconds</c>/<c>merge_poll_timeout_seconds</c>. Defaults to a
-/// fresh <see cref="ChorectlConfig"/> (15s/120s) when not injected, matching that type's own defaults.
+/// Supplies <c>merge_poll_interval_seconds</c>/<c>merge_poll_timeout_seconds</c> and
+/// <c>default_select.*</c> (which bump levels/grouped PRs get pre-selected). Defaults to a fresh
+/// <see cref="ChorectlConfig"/> when not injected, matching that type's own defaults.
 /// </param>
 public sealed class MergeCommand(
     RestClient restClient,
@@ -33,6 +34,7 @@ public sealed class MergeCommand(
     private readonly Func<TimeSpan, CancellationToken, Task> delay = delay ?? Task.Delay;
     private readonly TimeSpan mergePollInterval = TimeSpan.FromSeconds((config ?? new ChorectlConfig()).MergePollIntervalSeconds);
     private readonly TimeSpan mergePollTimeout = TimeSpan.FromSeconds((config ?? new ChorectlConfig()).MergePollTimeoutSeconds);
+    private readonly DefaultSelectConfig defaultSelect = (config ?? new ChorectlConfig()).DefaultSelect;
 
     protected override Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken) =>
         RunAsync(settings, cancellationToken);
@@ -50,8 +52,8 @@ public sealed class MergeCommand(
 
         // --json can't render an interactive prompt, so it implies --yes for action commands.
         var selected = settings.Yes || settings.Json
-            ? ready.Where(Classifier.DefaultSelected).ToList()
-            : SelectionScreens.PromptMerge(console, ready);
+            ? ready.Where(pr => Classifier.DefaultSelected(pr, defaultSelect)).ToList()
+            : SelectionScreens.PromptMerge(console, ready, defaultSelect);
 
         if (selected.Count == 0)
         {

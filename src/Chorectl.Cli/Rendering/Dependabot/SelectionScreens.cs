@@ -1,3 +1,4 @@
+using Chorectl.Core.Config;
 using Chorectl.Core.Domain.Dependabot;
 using Spectre.Console;
 
@@ -9,11 +10,11 @@ namespace Chorectl.Cli.Rendering.Dependabot;
 public static class SelectionScreens
 {
     /// <summary>
-    /// Prompts the user to select PRs to merge, grouped by repo, with patch/minor bumps
-    /// pre-selected and major/grouped bumps left unchecked.
+    /// Prompts the user to select PRs to merge, grouped by repo, with bumps pre-selected per
+    /// <paramref name="defaultSelect"/> (the user's <c>default_select.*</c> config).
     /// </summary>
-    public static IReadOnlyList<DependabotPr> PromptMerge(IAnsiConsole console, IReadOnlyList<DependabotPr> readyPrs) =>
-        Prompt(console, "Select PRs to merge [grey](space to toggle, enter to confirm)[/]", readyPrs, Classifier.DefaultSelected);
+    public static IReadOnlyList<DependabotPr> PromptMerge(IAnsiConsole console, IReadOnlyList<DependabotPr> readyPrs, DefaultSelectConfig defaultSelect) =>
+        Prompt(console, "Select PRs to merge [grey](space to toggle, enter to confirm)[/]", readyPrs, pr => Classifier.DefaultSelected(pr, defaultSelect));
 
     /// <summary>
     /// Prompts the user to select PRs to request a rebase for, grouped by repo. PRs that need a

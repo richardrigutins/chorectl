@@ -193,6 +193,27 @@ public class MergeCommandTests
     }
 
     [Fact]
+    public async Task RunAsync_WithMajorEnabledInConfig_YesMergesMajorBumpsToo()
+    {
+        var merger = new FakePullRequestMerger();
+        var (command, console) = CreateCommand(
+            merger,
+            [
+                SearchResponse(
+                    Node(1, "Bump patch-dep from 1.0.0 to 1.0.1"),
+                    Node(2, "Bump major-dep from 1.0.0 to 2.0.0")),
+                ByNumberResponse(1, "Bump patch-dep from 1.0.0 to 1.0.1"),
+                ByNumberResponse(2, "Bump major-dep from 1.0.0 to 2.0.0"),
+            ],
+            delay: NoOpDelay,
+            defaultSelect: new DefaultSelectConfig { Patch = true, Minor = true, Major = true });
+
+        await command.RunAsync(Settings(yes: true));
+
+        Assert.Equal([1, 2], merger.MergeCalls.Select(c => c.Pr.Number).OrderBy(n => n));
+    }
+
+    [Fact]
     public async Task RunAsync_TogglingTheRepoGroupHeader_SelectsEveryPrInThatRepo()
     {
         var merger = new FakePullRequestMerger();
@@ -875,19 +896,21 @@ public class MergeCommandTests
         Func<TimeSpan, CancellationToken, Task>? delay,
         TimeSpan? pollInterval = null,
         TimeSpan? pollTimeout = null,
-        FakeAuditLog? auditLog = null)
+        FakeAuditLog? auditLog = null,
+        DefaultSelectConfig? defaultSelect = null)
     {
         var console = new TestConsole().Interactive();
         var restClient = new RestClient(new FakeRepositorySource(
             new RepositoryInfo("octocat", "sample-repo", IsArchived: false, IsFork: false)));
         var handler = new FakeHttpMessageHandler(graphQlResponses);
         var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
-        var config = pollInterval is null && pollTimeout is null
+        var config = pollInterval is null && pollTimeout is null && defaultSelect is null
             ? null
             : new ChorectlConfig
             {
                 MergePollIntervalSeconds = (int)(pollInterval ?? TimeSpan.FromSeconds(15)).TotalSeconds,
                 MergePollTimeoutSeconds = (int)(pollTimeout ?? TimeSpan.FromSeconds(120)).TotalSeconds,
+                DefaultSelect = defaultSelect ?? new DefaultSelectConfig(),
             };
         var command = new MergeCommand(restClient, graphQlClient, merger, console, auditLog ?? new FakeAuditLog(), config, delay);
         return (command, console);

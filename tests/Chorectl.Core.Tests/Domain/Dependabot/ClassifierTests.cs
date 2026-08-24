@@ -1,3 +1,4 @@
+using Chorectl.Core.Config;
 using Chorectl.Core.Domain.Dependabot;
 
 namespace Chorectl.Core.Tests.Domain.Dependabot;
@@ -87,7 +88,7 @@ public class ClassifierTests
     {
         var pr = CreatePr(semverLevel: semverLevel, isGrouped: isGrouped);
 
-        Assert.Equal(expected, Classifier.DefaultSelected(pr));
+        Assert.Equal(expected, Classifier.DefaultSelected(pr, new DefaultSelectConfig()));
     }
 
     [Theory]
@@ -97,7 +98,7 @@ public class ClassifierTests
     {
         var pr = CreatePr(semverLevel: semverLevel, isSecurityUpdate: true);
 
-        Assert.False(Classifier.DefaultSelected(pr));
+        Assert.False(Classifier.DefaultSelected(pr, new DefaultSelectConfig()));
     }
 
     [Fact]
@@ -105,7 +106,47 @@ public class ClassifierTests
     {
         var pr = CreatePr(mergeStateStatus: "DIRTY", semverLevel: SemverLevel.Patch);
 
-        Assert.False(Classifier.DefaultSelected(pr));
+        Assert.False(Classifier.DefaultSelected(pr, new DefaultSelectConfig()));
+    }
+
+    [Fact]
+    public void DefaultSelected_WithMajorEnabledInConfig_SelectsMajorBumps()
+    {
+        var pr = CreatePr(semverLevel: SemverLevel.Major);
+
+        Assert.True(Classifier.DefaultSelected(pr, new DefaultSelectConfig { Major = true }));
+    }
+
+    [Fact]
+    public void DefaultSelected_WithGroupedEnabledInConfig_SelectsGroupedPrs()
+    {
+        var pr = CreatePr(isGrouped: true);
+
+        Assert.True(Classifier.DefaultSelected(pr, new DefaultSelectConfig { Grouped = true }));
+    }
+
+    [Fact]
+    public void DefaultSelected_WithPatchDisabledInConfig_ExcludesPatchBumps()
+    {
+        var pr = CreatePr(semverLevel: SemverLevel.Patch);
+
+        Assert.False(Classifier.DefaultSelected(pr, new DefaultSelectConfig { Patch = false }));
+    }
+
+    [Fact]
+    public void DefaultSelected_NeverSelectsUnknownSemverLevel_EvenWithMajorEnabledInConfig()
+    {
+        var pr = CreatePr(semverLevel: SemverLevel.Unknown);
+
+        Assert.False(Classifier.DefaultSelected(pr, new DefaultSelectConfig { Major = true }));
+    }
+
+    [Fact]
+    public void DefaultSelected_NeverSelectsSecurityUpdates_EvenWithMajorEnabledInConfig()
+    {
+        var pr = CreatePr(semverLevel: SemverLevel.Major, isSecurityUpdate: true);
+
+        Assert.False(Classifier.DefaultSelected(pr, new DefaultSelectConfig { Major = true }));
     }
 
     [Fact]

@@ -1,4 +1,5 @@
 using Chorectl.Cli.Rendering.Dependabot;
+using Chorectl.Core.Config;
 using Chorectl.Core.Domain.Dependabot;
 using Spectre.Console.Testing;
 
@@ -13,7 +14,7 @@ public class SelectionScreensTests
         console.Input.PushKey(ConsoleKey.Enter);
         var pr = Pr(isSecurityUpdate: true);
 
-        SelectionScreens.PromptMerge(console, [pr]);
+        SelectionScreens.PromptMerge(console, [pr], new DefaultSelectConfig());
 
         Assert.Contains("security", console.Output);
     }
@@ -25,7 +26,7 @@ public class SelectionScreensTests
         console.Input.PushKey(ConsoleKey.Enter);
         var pr = Pr(isGrouped: true);
 
-        SelectionScreens.PromptMerge(console, [pr]);
+        SelectionScreens.PromptMerge(console, [pr], new DefaultSelectConfig());
 
         Assert.Contains("grouped", console.Output);
     }
@@ -37,9 +38,21 @@ public class SelectionScreensTests
         console.Input.PushKey(ConsoleKey.Enter);
         var pr = Pr(isSecurityUpdate: true, semverLevel: SemverLevel.Patch);
 
-        var selected = SelectionScreens.PromptMerge(console, [pr]);
+        var selected = SelectionScreens.PromptMerge(console, [pr], new DefaultSelectConfig());
 
         Assert.Empty(selected);
+    }
+
+    [Fact]
+    public void PromptMerge_WithMajorEnabledInConfig_PreSelectsMajorBumps()
+    {
+        var console = new TestConsole().Interactive();
+        console.Input.PushKey(ConsoleKey.Enter);
+        var pr = Pr(semverLevel: SemverLevel.Major);
+
+        var selected = SelectionScreens.PromptMerge(console, [pr], new DefaultSelectConfig { Major = true });
+
+        Assert.Contains(pr, selected);
     }
 
     [Fact]
@@ -52,7 +65,7 @@ public class SelectionScreensTests
         var prA = Pr(repo: "repo-a");
         var prB = Pr(repo: "repo-b");
 
-        var selected = SelectionScreens.PromptMerge(console, [prA, prB]);
+        var selected = SelectionScreens.PromptMerge(console, [prA, prB], new DefaultSelectConfig());
 
         Assert.Equal(2, selected.Count);
         Assert.Contains(prA, selected);
