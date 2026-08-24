@@ -166,8 +166,14 @@ public sealed class MergeCommand(
 
         while (elapsed < mergePollTimeout)
         {
-            await delay(mergePollInterval, cancellationToken);
-            elapsed += mergePollInterval;
+            // Never wait past the configured timeout budget - a configured interval longer than
+            // (or not evenly dividing) the timeout would otherwise let the loop run over it by up
+            // to one full interval.
+            var remaining = mergePollTimeout - elapsed;
+            var wait = mergePollInterval < remaining ? mergePollInterval : remaining;
+
+            await delay(wait, cancellationToken);
+            elapsed += wait;
             onTick?.Invoke(mergePollTimeout - elapsed);
 
             var refetched = await graphQlClient.RefetchAsync(owner, current, cancellationToken);

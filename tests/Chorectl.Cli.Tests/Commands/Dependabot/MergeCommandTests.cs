@@ -482,6 +482,35 @@ public class MergeCommandTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenPollIntervalExceedsTimeout_ClampsTheWaitToTheRemainingBudgetInsteadOfOvershooting()
+    {
+        var merger = new FakePullRequestMerger { FailForPrNumbers = { 1 } };
+        var waits = new List<TimeSpan>();
+        var (command, console) = CreateCommand(
+            merger,
+            [
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+            ],
+            delay: (wait, _) =>
+            {
+                waits.Add(wait);
+                return Task.CompletedTask;
+            },
+            pollInterval: TimeSpan.FromSeconds(10),
+            pollTimeout: TimeSpan.FromSeconds(2));
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        var exitCode = await command.RunAsync(Settings());
+
+        Assert.Equal(0, exitCode);
+        var wait = Assert.Single(waits);
+        Assert.Equal(TimeSpan.FromSeconds(2), wait);
+        Assert.Contains("still not mergeable after 2s", console.Output);
+    }
+
+    [Fact]
     public async Task RunAsync_WhenMergeFailsWithInsufficientPermission_SkipsImmediatelyWithoutPolling()
     {
         var merger = new FakePullRequestMerger { FailWithAuthErrorForPrNumbers = { 1 } };
