@@ -55,6 +55,68 @@ public class ConfigLoaderTests : IDisposable
     }
 
     [Fact]
+    public void Load_WithExplicitNullExcludeRepos_NormalizesToEmptyList()
+    {
+        File.WriteAllText(ConfigPath, "exclude_repos:\n");
+
+        var config = new ConfigLoader(ConfigPath).Load();
+
+        Assert.Empty(config.ExcludeRepos);
+    }
+
+    [Fact]
+    public void Load_WithExplicitNullDefaultSelect_NormalizesToDefaults()
+    {
+        File.WriteAllText(ConfigPath, "default_select:\n");
+
+        var config = new ConfigLoader(ConfigPath).Load();
+
+        Assert.True(config.DefaultSelect.Patch);
+        Assert.True(config.DefaultSelect.Minor);
+        Assert.False(config.DefaultSelect.Major);
+        Assert.False(config.DefaultSelect.Grouped);
+    }
+
+    [Theory]
+    [InlineData("merge_method: bogus")]
+    [InlineData("merge_poll_interval_seconds: 0")]
+    [InlineData("merge_poll_interval_seconds: -5")]
+    [InlineData("merge_poll_timeout_seconds: -1")]
+    [InlineData("max_backoff_seconds: 0")]
+    public void Load_WithAHandEditedInvalidValue_ThrowsArgumentException(string yaml)
+    {
+        File.WriteAllText(ConfigPath, yaml + "\n");
+        var loader = new ConfigLoader(ConfigPath);
+
+        Assert.Throws<ArgumentException>(() => loader.Load());
+    }
+
+    [Fact]
+    public void SetValue_WhenTheFileHasAnUnrelatedInvalidValue_StillFixesTheGivenKey()
+    {
+        // config set must stay usable to repair a hand-broken file, one key at a time - it can't
+        // require every other key to already be valid first.
+        File.WriteAllText(ConfigPath, "merge_method: bogus\nmerge_poll_interval_seconds: 45\n");
+        var loader = new ConfigLoader(ConfigPath);
+
+        loader.SetValue("merge_poll_interval_seconds", "60");
+
+        Assert.Equal(60, loader.SetValue("include_forks", "true").MergePollIntervalSeconds);
+    }
+
+    [Fact]
+    public void SetValue_CanFixTheInvalidKeyItself()
+    {
+        File.WriteAllText(ConfigPath, "merge_method: bogus\n");
+        var loader = new ConfigLoader(ConfigPath);
+
+        var config = loader.SetValue("merge_method", "rebase");
+
+        Assert.Equal("rebase", config.MergeMethod);
+        Assert.Equal("rebase", loader.Load().MergeMethod);
+    }
+
+    [Fact]
     public void Save_ThenLoad_RoundTrips()
     {
         var loader = new ConfigLoader(ConfigPath);
