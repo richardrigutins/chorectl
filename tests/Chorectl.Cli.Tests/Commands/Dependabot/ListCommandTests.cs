@@ -156,6 +156,70 @@ public class ListCommandTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenVulnerabilityAlertsAreTruncated_PrintsAWarning()
+    {
+        var console = new TestConsole();
+        var restClient = new RestClient(new FakeRepositorySource(
+            new RepositoryInfo("octocat", "sample-repo", IsArchived: false, IsFork: false)));
+        var handler = new FakeHttpMessageHandler(SingleNodeResponseWithTruncatedSecurityAlerts());
+        var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
+        var command = new ListCommand(restClient, graphQlClient, console);
+
+        await command.RunAsync(Settings());
+
+        Assert.Contains("Warning:", console.Output);
+        Assert.Contains("sample-repo", console.Output);
+        Assert.Contains("more than 100 open vulnerability alerts", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithJson_WhenVulnerabilityAlertsAreTruncated_ReportsItInTheJsonPayloadInsteadOfTheConsoleWarning()
+    {
+        var console = new TestConsole();
+        var restClient = new RestClient(new FakeRepositorySource(
+            new RepositoryInfo("octocat", "sample-repo", IsArchived: false, IsFork: false)));
+        var handler = new FakeHttpMessageHandler(SingleNodeResponseWithTruncatedSecurityAlerts());
+        var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
+        var command = new ListCommand(restClient, graphQlClient, console);
+
+        await command.RunAsync(Settings(json: true));
+
+        Assert.DoesNotContain("Warning:", console.Output);
+        Assert.Contains("\"reposWithTruncatedSecurityAlerts\": [", console.Output);
+        Assert.Contains("\"sample-repo\"", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithJson_WhenVulnerabilityAlertsAreNotTruncated_ReportsAnEmptyList()
+    {
+        var console = new TestConsole();
+        var restClient = new RestClient(new FakeRepositorySource(
+            new RepositoryInfo("octocat", "sample-repo", IsArchived: false, IsFork: false)));
+        var handler = new FakeHttpMessageHandler(SingleNodeResponse());
+        var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
+        var command = new ListCommand(restClient, graphQlClient, console);
+
+        await command.RunAsync(Settings(json: true));
+
+        Assert.Contains("\"reposWithTruncatedSecurityAlerts\": []", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithCancelledToken_CancelsTheFetchInsteadOfIgnoringIt()
+    {
+        var console = new TestConsole();
+        var restClient = new RestClient(new FakeRepositorySource(
+            new RepositoryInfo("octocat", "sample-repo", IsArchived: false, IsFork: false)));
+        var handler = new FakeHttpMessageHandler(SingleNodeResponse());
+        var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
+        var command = new ListCommand(restClient, graphQlClient, console);
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => command.RunAsync(Settings(), cts.Token));
+    }
+
+    [Fact]
     public async Task RunAsync_WithUnknownRepo_ThrowsRepositoryNotFoundException()
     {
         var console = new TestConsole();
@@ -209,6 +273,38 @@ public class ListCommandTests
                   "commits": { "nodes": [ { "commit": { "statusCheckRollup": { "state": "SUCCESS" } } } ] }
                 }
               ]
+            }
+          }
+        }
+        """;
+
+    private static string SingleNodeResponseWithTruncatedSecurityAlerts() => """
+        {
+          "data": {
+            "search": {
+              "pageInfo": { "hasNextPage": false, "endCursor": null },
+              "nodes": [
+                {
+                  "number": 42,
+                  "title": "Bump firebase-tools from 11.2.0 to 11.3.1",
+                  "url": "https://github.com/octocat/sample-repo/pull/42",
+                  "headRefName": "dependabot/npm_and_yarn/firebase-tools-11.3.1",
+                  "isDraft": false,
+                  "updatedAt": "2026-08-01T12:00:00Z",
+                  "reviewDecision": "APPROVED",
+                  "mergeStateStatus": "CLEAN",
+                  "repository": { "name": "sample-repo" },
+                  "labels": { "nodes": [] },
+                  "commits": { "nodes": [ { "commit": { "statusCheckRollup": { "state": "SUCCESS" } } } ] }
+                }
+              ]
+            },
+            "repo0": {
+              "name": "sample-repo",
+              "vulnerabilityAlerts": {
+                "pageInfo": { "hasNextPage": true },
+                "nodes": []
+              }
             }
           }
         }

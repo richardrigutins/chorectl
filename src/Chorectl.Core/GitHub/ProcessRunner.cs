@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 
 namespace Chorectl.Core.GitHub;
 
@@ -21,10 +22,33 @@ public sealed class ProcessRunner : IProcessRunner
         using var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException($"Failed to start '{fileName}'.");
 
-        string stdout = process.StandardOutput.ReadToEnd();
-        string stderr = process.StandardError.ReadToEnd();
+        // Reading stdout to completion before even starting to read stderr (or vice versa) can
+        // deadlock: if the child fills the OS pipe buffer on the stream nobody's draining yet, its
+        // write blocks, which means it never exits and closes the stream being read - which never
+        // returns either. Draining both concurrently via the async line-received events (the
+        // pattern Process itself documents for this) avoids that regardless of output volume.
+        var stdout = new StringBuilder();
+        var stderr = new StringBuilder();
+
+        process.OutputDataReceived += (_, e) =>
+        {
+            if (e.Data is not null)
+            {
+                stdout.AppendLine(e.Data);
+            }
+        };
+        process.ErrorDataReceived += (_, e) =>
+        {
+            if (e.Data is not null)
+            {
+                stderr.AppendLine(e.Data);
+            }
+        };
+
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
         process.WaitForExit();
 
-        return new ProcessResult(process.ExitCode, stdout.Trim(), stderr.Trim());
+        return new ProcessResult(process.ExitCode, stdout.ToString().Trim(), stderr.ToString().Trim());
     }
 }

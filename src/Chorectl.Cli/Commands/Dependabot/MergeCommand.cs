@@ -16,8 +16,9 @@ namespace Chorectl.Cli.Commands.Dependabot;
 /// PR is no longer behind and CI is passing, or the poll timeout elapses.
 /// </summary>
 /// <param name="config">
-/// Supplies <c>merge_poll_interval_seconds</c>/<c>merge_poll_timeout_seconds</c>. Defaults to a
-/// fresh <see cref="ChorectlConfig"/> (15s/120s) when not injected, matching that type's own defaults.
+/// Supplies <c>merge_poll_interval_seconds</c>/<c>merge_poll_timeout_seconds</c> and
+/// <c>default_select.*</c> (which bump levels/grouped PRs get pre-selected). Defaults to a fresh
+/// <see cref="ChorectlConfig"/> when not injected, matching that type's own defaults.
 /// </param>
 public sealed class MergeCommand(
     RestClient restClient,
@@ -33,41 +34,31 @@ public sealed class MergeCommand(
     private readonly Func<TimeSpan, CancellationToken, Task> delay = delay ?? Task.Delay;
     private readonly TimeSpan mergePollInterval = TimeSpan.FromSeconds((config ?? new ChorectlConfig()).MergePollIntervalSeconds);
     private readonly TimeSpan mergePollTimeout = TimeSpan.FromSeconds((config ?? new ChorectlConfig()).MergePollTimeoutSeconds);
+    private readonly DefaultSelectConfig defaultSelect = (config ?? new ChorectlConfig()).DefaultSelect;
 
     protected override Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken) =>
         RunAsync(settings, cancellationToken);
 
     public async Task<int> RunAsync(Settings settings, CancellationToken cancellationToken = default)
     {
-        var repos = await restClient.DiscoverReposAsync(settings.Repo);
-        VerboseLog.Write(console, settings.Verbose, settings.Json, $"Discovered {repos.Count} repo(s)");
-
-        var prs = await graphQlClient.FetchDependabotPrsAsync(repos, cancellationToken);
-        VerboseLog.Write(console, settings.Verbose, settings.Json, $"Fetched {prs.Count} Dependabot PR(s)");
-
-        if (settings.Security)
-        {
-            prs = prs.Where(pr => pr.IsSecurityUpdate).ToList();
-        }
+        var (prs, owners, truncatedRepos) = await DependabotActionSupport.FetchCandidatesAsync(restClient, graphQlClient, console, settings, cancellationToken);
 
         var ready = prs.Where(Classifier.IsReadyToMerge).OrderBy(p => p.Repo).ThenBy(p => p.Number).ToList();
 
         if (ready.Count == 0)
         {
-            return DependabotActionSupport.ReportNothingToDo<MergeResult>(console, settings.Json, settings.DryRun, "No Dependabot PRs are ready to merge.");
+            return DependabotActionSupport.ReportNothingToDo<MergeResult>(console, settings.Json, settings.DryRun, "No Dependabot PRs are ready to merge.", truncatedRepos);
         }
 
         // --json can't render an interactive prompt, so it implies --yes for action commands.
         var selected = settings.Yes || settings.Json
-            ? ready.Where(Classifier.DefaultSelected).ToList()
-            : SelectionScreens.PromptMerge(console, ready);
+            ? ready.Where(pr => Classifier.DefaultSelected(pr, defaultSelect)).ToList()
+            : SelectionScreens.PromptMerge(console, ready, defaultSelect);
 
         if (selected.Count == 0)
         {
-            return DependabotActionSupport.ReportNothingToDo<MergeResult>(console, settings.Json, settings.DryRun, "No PRs selected. Nothing merged.");
+            return DependabotActionSupport.ReportNothingToDo<MergeResult>(console, settings.Json, settings.DryRun, "No PRs selected. Nothing merged.", truncatedRepos);
         }
-
-        var owners = repos.ToDictionary(r => r.Name, r => r.Owner);
 
         if (!settings.Json)
         {
@@ -90,7 +81,7 @@ public sealed class MergeCommand(
 
         if (settings.Json)
         {
-            JsonOutput.Write(console, new ActionJsonOutput<MergeResult>(settings.DryRun, results));
+            JsonOutput.Write(console, new ActionJsonOutput<MergeResult>(settings.DryRun, results, truncatedRepos));
         }
         else
         {
@@ -122,27 +113,44 @@ public sealed class MergeCommand(
             return new MergeResult(refetched, MergeOutcome.Merged);
         }
 
+        // The only retryable failure is MergeNotReadyException (US-12/AC-12.1) - waiting won't
+        // fix a permission problem (AC-12.2) or a likely tool bug (404, 422, unrecognized
+        // response; AC-12.3), so both of those skip immediately instead of entering the poll loop.
+        var result = await TryMergeAsync(owner, refetched, cancellationToken);
+        return result ?? await PollAndRetryMergeAsync(owner, refetched, json, cancellationToken);
+    }
+
+    /// <summary>
+    /// Attempts <see cref="IPullRequestMerger.MergeAsync"/> and classifies the outcome. Returns
+    /// <see langword="null"/> only for <see cref="MergeNotReadyException"/> - the one retryable
+    /// failure - since what "retryable" means differs by call site (enter the poll loop for the
+    /// first attempt; keep looping for a poll-loop retry). Every other outcome, success included,
+    /// is a terminal <see cref="MergeResult"/>.
+    /// </summary>
+    private async Task<MergeResult?> TryMergeAsync(string owner, DependabotPr pr, CancellationToken cancellationToken)
+    {
         try
         {
-            await merger.MergeAsync(owner, refetched, cancellationToken);
-            return new MergeResult(refetched, MergeOutcome.Merged);
+            await merger.MergeAsync(owner, pr, cancellationToken);
+            return new MergeResult(pr, MergeOutcome.Merged);
         }
         catch (MergeNotReadyException)
         {
-            // The only retryable failure - covers both "Dependabot is actively rebasing" and
-            // "nothing's rebased it yet", which look identical from the API (US-12/AC-12.1).
-            return await PollAndRetryMergeAsync(owner, refetched, json, cancellationToken);
+            return null;
         }
         catch (GitHubAuthException ex)
         {
-            // Waiting won't fix a permission problem - skip immediately, no poll (AC-12.2).
-            return new MergeResult(refetched, MergeOutcome.Failed, $"insufficient permission to merge - {ex.Message}");
+            return new MergeResult(pr, MergeOutcome.Failed, $"insufficient permission to merge - {ex.Message}");
+        }
+        catch (GitHubRateLimitException)
+        {
+            // Distinct from GitHubAuthException - not a permission problem, and not the tool's
+            // fault either. Backoff-and-retry is Phase 3 (US-11); for now, report it accurately.
+            return new MergeResult(pr, MergeOutcome.Failed, "rate limited by GitHub - try again shortly");
         }
         catch (Exception ex)
         {
-            // Not a per-PR condition but a likely tool bug (404, 422, unrecognized response) -
-            // skip immediately with the raw error surfaced rather than a generic "not ready" (AC-12.3).
-            return new MergeResult(refetched, MergeOutcome.Failed, $"unexpected error, likely a tool bug - {ex.Message}");
+            return new MergeResult(pr, MergeOutcome.Failed, $"unexpected error, likely a tool bug - {ex.Message}");
         }
     }
 
@@ -158,8 +166,14 @@ public sealed class MergeCommand(
 
         while (elapsed < mergePollTimeout)
         {
-            await delay(mergePollInterval, cancellationToken);
-            elapsed += mergePollInterval;
+            // Never wait past the configured timeout budget - a configured interval longer than
+            // (or not evenly dividing) the timeout would otherwise let the loop run over it by up
+            // to one full interval.
+            var remaining = mergePollTimeout - elapsed;
+            var wait = mergePollInterval < remaining ? mergePollInterval : remaining;
+
+            await delay(wait, cancellationToken);
+            elapsed += wait;
             onTick?.Invoke(mergePollTimeout - elapsed);
 
             var refetched = await graphQlClient.RefetchAsync(owner, current, cancellationToken);
@@ -171,32 +185,22 @@ public sealed class MergeCommand(
             current = refetched;
 
             // Stop polling immediately rather than running out the full timeout (AC-03.5).
-            if (current.MergeStateStatus == "DIRTY")
+            if (current.MergeStateStatus == MergeStateStatuses.Dirty)
             {
                 return new MergeResult(current, MergeOutcome.Skipped, "became conflicting while waiting");
             }
 
             // Retry once no longer behind *and* CI is passing on the current head - not just
             // once the conflict state clears (AC-03.4).
-            if (current.MergeStateStatus != "BEHIND" && current.Ci == CiStatus.Passing)
+            if (current.MergeStateStatus != MergeStateStatuses.Behind && current.Ci == CiStatus.Passing)
             {
-                try
+                var result = await TryMergeAsync(owner, current, cancellationToken);
+                if (result is not null)
                 {
-                    await merger.MergeAsync(owner, current, cancellationToken);
-                    return new MergeResult(current, MergeOutcome.Merged);
+                    return result;
                 }
-                catch (MergeNotReadyException)
-                {
-                    // Keep polling against the same timeout.
-                }
-                catch (GitHubAuthException ex)
-                {
-                    return new MergeResult(current, MergeOutcome.Failed, $"insufficient permission to merge - {ex.Message}");
-                }
-                catch (Exception ex)
-                {
-                    return new MergeResult(current, MergeOutcome.Failed, $"unexpected error, likely a tool bug - {ex.Message}");
-                }
+
+                // null means MergeNotReadyException - keep polling against the same timeout.
             }
         }
 
@@ -212,7 +216,7 @@ public sealed class MergeCommand(
     };
 
     private static string DescribeNotReady(DependabotPr pr) =>
-        pr.MergeStateStatus == "DIRTY" ? "conflicting"
+        pr.MergeStateStatus == MergeStateStatuses.Dirty ? "conflicting"
         : pr.Ci == CiStatus.Failing ? "state changed (checks now failing)"
         : pr.Ci == CiStatus.Pending ? "state changed (checks still pending)"
         : pr.Review == ReviewStatus.ReviewRequired ? "state changed (now requires review)"

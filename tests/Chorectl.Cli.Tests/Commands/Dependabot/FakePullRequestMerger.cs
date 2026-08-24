@@ -18,11 +18,17 @@ internal sealed class FakePullRequestMerger : IPullRequestMerger
     /// <summary>PR numbers that fail with <see cref="GitHubAuthException"/> (insufficient permission) on every merge attempt.</summary>
     public HashSet<int> FailWithAuthErrorForPrNumbers { get; } = [];
 
+    /// <summary>PR numbers that fail with <see cref="GitHubRateLimitException"/> on every merge attempt.</summary>
+    public HashSet<int> FailWithRateLimitErrorForPrNumbers { get; } = [];
+
     /// <summary>PR numbers that fail with an unrecognized exception (e.g. a 404/422) on every merge attempt.</summary>
     public HashSet<int> FailWithUnexpectedErrorForPrNumbers { get; } = [];
 
     /// <summary>PR numbers whose first attempt fails as not-ready (entering the poll loop), then whose retry fails with insufficient permission instead of succeeding.</summary>
     public HashSet<int> FailPollRetryWithAuthErrorForPrNumbers { get; } = [];
+
+    /// <summary>PR numbers whose first attempt fails as not-ready (entering the poll loop), then whose retry fails with a rate limit instead of succeeding.</summary>
+    public HashSet<int> FailPollRetryWithRateLimitErrorForPrNumbers { get; } = [];
 
     public string? FailureMessage { get; set; }
 
@@ -33,6 +39,11 @@ internal sealed class FakePullRequestMerger : IPullRequestMerger
         if (FailWithAuthErrorForPrNumbers.Contains(pr.Number))
         {
             throw new GitHubAuthException(FailureMessage ?? $"insufficient permission to merge #{pr.Number}");
+        }
+
+        if (FailWithRateLimitErrorForPrNumbers.Contains(pr.Number))
+        {
+            throw new GitHubRateLimitException(FailureMessage ?? $"rate limited on #{pr.Number}");
         }
 
         if (FailWithUnexpectedErrorForPrNumbers.Contains(pr.Number))
@@ -48,6 +59,16 @@ internal sealed class FakePullRequestMerger : IPullRequestMerger
             }
 
             throw new GitHubAuthException(FailureMessage ?? $"insufficient permission to merge #{pr.Number}");
+        }
+
+        if (FailPollRetryWithRateLimitErrorForPrNumbers.Contains(pr.Number))
+        {
+            if (alreadyFailedOnce.Add(pr.Number))
+            {
+                throw new MergeNotReadyException(FailureMessage ?? $"not mergeable yet on #{pr.Number}");
+            }
+
+            throw new GitHubRateLimitException(FailureMessage ?? $"rate limited on #{pr.Number}");
         }
 
         var failsThisCall = FailForPrNumbers.Contains(pr.Number)

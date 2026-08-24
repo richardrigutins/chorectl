@@ -38,7 +38,11 @@ public static class Queries
     /// the batch (built by <see cref="GraphQlClient"/>), each pulling <c>vulnerabilityAlerts</c> -
     /// the signal cross-referenced against the search results to set
     /// <see cref="Chorectl.Core.Domain.Dependabot.DependabotPr.IsSecurityUpdate"/>. Riding along as
-    /// a sibling field on this same query avoids an extra round trip.
+    /// a sibling field on this same query avoids an extra round trip. <c>vulnerabilityAlerts</c>
+    /// is capped at 100 with no further pagination of its own (a repo with more open alerts than
+    /// that is an extreme edge case) - its <c>pageInfo.hasNextPage</c> is still requested so
+    /// <see cref="GraphQlClient"/> can at least detect and report the truncation instead of
+    /// silently under-reporting <c>IsSecurityUpdate</c>.
     /// </summary>
     public static string DependabotPrSearch(string repositoryAliases) => $$"""
         query($searchQuery: String!, $after: String) {

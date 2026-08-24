@@ -8,5 +8,6 @@ namespace Chorectl.Core.GitHub;
 public interface IPullRequestApprover
 {
     /// <exception cref="GitHubAuthException">Insufficient permission (403) to review this PR.</exception>
+    /// <exception cref="GitHubRateLimitException">GitHub rate-limited the request.</exception>
     Task ApproveAsync(string owner, DependabotPr pr, CancellationToken cancellationToken = default);
 }

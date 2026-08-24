@@ -91,6 +91,7 @@ public static class ProgressDisplay
         console.MarkupLine(result.Outcome switch
         {
             RebaseOutcome.Requested => $" [green]✔[/] {line}   requested",
+            RebaseOutcome.Skipped => $" [yellow]✖[/] {line}   skipped — {reason}",
             RebaseOutcome.Failed => $" [red]✖[/] {line}   failed — {reason}",
             _ => $" {line}",
         });
@@ -99,10 +100,11 @@ public static class ProgressDisplay
     public static void RenderRebaseSummary(IAnsiConsole console, IReadOnlyList<RebaseResult> results, bool dryRun = false)
     {
         var requested = results.Count(r => r.Outcome == RebaseOutcome.Requested);
+        var skipped = results.Count(r => r.Outcome == RebaseOutcome.Skipped);
         var failed = results.Count(r => r.Outcome == RebaseOutcome.Failed);
 
         console.WriteLine();
-        console.MarkupLine($"Done: {requested} requested, {failed} failed");
+        console.MarkupLine($"Done: {requested} requested, {skipped} skipped, {failed} failed");
         RenderDryRunNote(console, dryRun);
     }
 
@@ -120,6 +122,7 @@ public static class ProgressDisplay
         console.MarkupLine(result.Outcome switch
         {
             ApproveOutcome.Approved => $" [green]✔[/] {line}   approved",
+            ApproveOutcome.Skipped => $" [yellow]✖[/] {line}   skipped — {reason}",
             ApproveOutcome.Failed => $" [red]✖[/] {line}   failed — {reason}",
             _ => $" {line}",
         });
@@ -128,10 +131,11 @@ public static class ProgressDisplay
     public static void RenderApproveSummary(IAnsiConsole console, IReadOnlyList<ApproveResult> results, bool dryRun = false)
     {
         var approved = results.Count(r => r.Outcome == ApproveOutcome.Approved);
+        var skipped = results.Count(r => r.Outcome == ApproveOutcome.Skipped);
         var failed = results.Count(r => r.Outcome == ApproveOutcome.Failed);
 
         console.WriteLine();
-        console.MarkupLine($"Done: {approved} approved, {failed} failed");
+        console.MarkupLine($"Done: {approved} approved, {skipped} skipped, {failed} failed");
         RenderDryRunNote(console, dryRun);
     }
 }

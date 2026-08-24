@@ -6,5 +6,6 @@ namespace Chorectl.Core.Domain.Dependabot;
 public enum RebaseOutcome
 {
     Requested,
+    Skipped,
     Failed,
 }

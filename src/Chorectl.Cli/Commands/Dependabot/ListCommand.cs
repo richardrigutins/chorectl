@@ -15,25 +15,16 @@ public sealed class ListCommand(RestClient restClient, GraphQlClient graphQlClie
     public sealed class Settings : DependabotSettings;
 
     protected override Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken) =>
-        RunAsync(settings);
+        RunAsync(settings, cancellationToken);
 
     /// <summary>Discovers repos, fetches open Dependabot PRs, and renders the overview table (or JSON).</summary>
-    public async Task<int> RunAsync(Settings settings)
+    public async Task<int> RunAsync(Settings settings, CancellationToken cancellationToken = default)
     {
-        var repos = await restClient.DiscoverReposAsync(settings.Repo);
-        VerboseLog.Write(console, settings.Verbose, settings.Json, $"Discovered {repos.Count} repo(s)");
-
-        var prs = await graphQlClient.FetchDependabotPrsAsync(repos);
-        VerboseLog.Write(console, settings.Verbose, settings.Json, $"Fetched {prs.Count} Dependabot PR(s)");
-
-        if (settings.Security)
-        {
-            prs = prs.Where(pr => pr.IsSecurityUpdate).ToList();
-        }
+        var (prs, _, truncatedRepos) = await DependabotActionSupport.FetchCandidatesAsync(restClient, graphQlClient, console, settings, cancellationToken);
 
         if (settings.Json)
         {
-            JsonOutput.Write(console, prs);
+            JsonOutput.Write(console, new ListJsonOutput(prs, truncatedRepos));
         }
         else
         {

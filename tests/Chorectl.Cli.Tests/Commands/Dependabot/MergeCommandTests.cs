@@ -54,6 +54,34 @@ public class MergeCommandTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenAuditLogWriteFails_StillProcessesTheRestOfTheBatchAndWarns()
+    {
+        var merger = new FakePullRequestMerger();
+        var auditLog = new FakeAuditLog { FailWith = new IOException("disk full") };
+        var (command, console) = CreateCommand(
+            merger,
+            [
+                SearchResponse(
+                    Node(1, "Bump patch-dep from 1.0.0 to 1.0.1"),
+                    Node(2, "Bump minor-dep from 1.0.0 to 1.1.0")),
+                ByNumberResponse(1, "Bump patch-dep from 1.0.0 to 1.0.1"),
+                ByNumberResponse(2, "Bump minor-dep from 1.0.0 to 1.1.0"),
+            ],
+            delay: NoOpDelay,
+            auditLog: auditLog);
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        var exitCode = await command.RunAsync(Settings());
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal([1, 2], merger.MergeCalls.Select(c => c.Pr.Number).OrderBy(n => n));
+        Assert.Empty(auditLog.Entries);
+        Assert.Contains("Warning:", console.Output);
+        Assert.Contains("disk full", console.Output);
+        Assert.Contains("Done: 2 merged, 0 skipped, 0 failed", console.Output);
+    }
+
+    [Fact]
     public async Task RunAsync_WithDryRun_RecordsNoAuditEntries()
     {
         var merger = new FakePullRequestMerger();
@@ -190,6 +218,27 @@ public class MergeCommandTests
 
         var call = Assert.Single(merger.MergeCalls);
         Assert.Equal(1, call.Pr.Number);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithMajorEnabledInConfig_YesMergesMajorBumpsToo()
+    {
+        var merger = new FakePullRequestMerger();
+        var (command, console) = CreateCommand(
+            merger,
+            [
+                SearchResponse(
+                    Node(1, "Bump patch-dep from 1.0.0 to 1.0.1"),
+                    Node(2, "Bump major-dep from 1.0.0 to 2.0.0")),
+                ByNumberResponse(1, "Bump patch-dep from 1.0.0 to 1.0.1"),
+                ByNumberResponse(2, "Bump major-dep from 1.0.0 to 2.0.0"),
+            ],
+            delay: NoOpDelay,
+            defaultSelect: new DefaultSelectConfig { Patch = true, Minor = true, Major = true });
+
+        await command.RunAsync(Settings(yes: true));
+
+        Assert.Equal([1, 2], merger.MergeCalls.Select(c => c.Pr.Number).OrderBy(n => n));
     }
 
     [Fact]
@@ -433,6 +482,35 @@ public class MergeCommandTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenPollIntervalExceedsTimeout_ClampsTheWaitToTheRemainingBudgetInsteadOfOvershooting()
+    {
+        var merger = new FakePullRequestMerger { FailForPrNumbers = { 1 } };
+        var waits = new List<TimeSpan>();
+        var (command, console) = CreateCommand(
+            merger,
+            [
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+            ],
+            delay: (wait, _) =>
+            {
+                waits.Add(wait);
+                return Task.CompletedTask;
+            },
+            pollInterval: TimeSpan.FromSeconds(10),
+            pollTimeout: TimeSpan.FromSeconds(2));
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        var exitCode = await command.RunAsync(Settings());
+
+        Assert.Equal(0, exitCode);
+        var wait = Assert.Single(waits);
+        Assert.Equal(TimeSpan.FromSeconds(2), wait);
+        Assert.Contains("still not mergeable after 2s", console.Output);
+    }
+
+    [Fact]
     public async Task RunAsync_WhenMergeFailsWithInsufficientPermission_SkipsImmediatelyWithoutPolling()
     {
         var merger = new FakePullRequestMerger { FailWithAuthErrorForPrNumbers = { 1 } };
@@ -457,6 +535,34 @@ public class MergeCommandTests
         Assert.Equal(1, call.Pr.Number);
         Assert.Empty(waits);
         Assert.Contains("failed — insufficient permission to merge", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenMergeFailsWithRateLimit_SkipsImmediatelyWithoutPollingAndDoesNotReportInsufficientPermission()
+    {
+        var merger = new FakePullRequestMerger { FailWithRateLimitErrorForPrNumbers = { 1 } };
+        var waits = new List<TimeSpan>();
+        var (command, console) = CreateCommand(
+            merger,
+            [
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1"),
+            ],
+            delay: (wait, _) =>
+            {
+                waits.Add(wait);
+                return Task.CompletedTask;
+            });
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        var exitCode = await command.RunAsync(Settings());
+
+        Assert.Equal(1, exitCode);
+        var call = Assert.Single(merger.MergeCalls);
+        Assert.Equal(1, call.Pr.Number);
+        Assert.Empty(waits);
+        Assert.Contains("failed — rate limited by GitHub", console.Output);
+        Assert.DoesNotContain("insufficient permission", console.Output);
     }
 
     [Fact]
@@ -510,6 +616,30 @@ public class MergeCommandTests
         Assert.Equal(1, exitCode);
         Assert.Equal([1, 1], merger.MergeCalls.Select(c => c.Pr.Number));
         Assert.Contains("failed — insufficient permission to merge", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenPollRetryFailsWithRateLimit_StopsPollingImmediatelyWithoutReportingInsufficientPermission()
+    {
+        var merger = new FakePullRequestMerger { FailPollRetryWithRateLimitErrorForPrNumbers = { 1 } };
+        var (command, console) = CreateCommand(
+            merger,
+            [
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "CLEAN"),
+            ],
+            delay: NoOpDelay,
+            pollInterval: TimeSpan.FromSeconds(1),
+            pollTimeout: TimeSpan.FromSeconds(10));
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        var exitCode = await command.RunAsync(Settings());
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal([1, 1], merger.MergeCalls.Select(c => c.Pr.Number));
+        Assert.Contains("failed — rate limited by GitHub", console.Output);
+        Assert.DoesNotContain("insufficient permission", console.Output);
     }
 
     [Fact]
@@ -790,6 +920,19 @@ public class MergeCommandTests
     }
 
     [Fact]
+    public async Task RunAsync_WithJson_WhenVulnerabilityAlertsAreTruncated_IncludesReposInJsonOutput()
+    {
+        var merger = new FakePullRequestMerger();
+        var (command, console) = CreateCommand(merger, EmptySearchResponseWithTruncatedSecurityAlerts());
+
+        var exitCode = await command.RunAsync(Settings(json: true));
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("\"reposWithTruncatedSecurityAlerts\": [", console.Output);
+        Assert.Contains("\"sample-repo\"", console.Output);
+    }
+
+    [Fact]
     public async Task RunAsync_WithNoOverride_UsesThePollIntervalAndTimeoutFromTheInjectedConfig()
     {
         var merger = new FakePullRequestMerger { FailForPrNumbers = { 1 } };
@@ -823,19 +966,21 @@ public class MergeCommandTests
         Func<TimeSpan, CancellationToken, Task>? delay,
         TimeSpan? pollInterval = null,
         TimeSpan? pollTimeout = null,
-        FakeAuditLog? auditLog = null)
+        FakeAuditLog? auditLog = null,
+        DefaultSelectConfig? defaultSelect = null)
     {
         var console = new TestConsole().Interactive();
         var restClient = new RestClient(new FakeRepositorySource(
             new RepositoryInfo("octocat", "sample-repo", IsArchived: false, IsFork: false)));
         var handler = new FakeHttpMessageHandler(graphQlResponses);
         var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
-        var config = pollInterval is null && pollTimeout is null
+        var config = pollInterval is null && pollTimeout is null && defaultSelect is null
             ? null
             : new ChorectlConfig
             {
                 MergePollIntervalSeconds = (int)(pollInterval ?? TimeSpan.FromSeconds(15)).TotalSeconds,
                 MergePollTimeoutSeconds = (int)(pollTimeout ?? TimeSpan.FromSeconds(120)).TotalSeconds,
+                DefaultSelect = defaultSelect ?? new DefaultSelectConfig(),
             };
         var command = new MergeCommand(restClient, graphQlClient, merger, console, auditLog ?? new FakeAuditLog(), config, delay);
         return (command, console);
@@ -851,6 +996,24 @@ public class MergeCommandTests
             "search": {
               "pageInfo": { "hasNextPage": false, "endCursor": null },
               "nodes": [ {{string.Join(",", nodes)}} ]
+            }
+          }
+        }
+        """;
+
+    private static string EmptySearchResponseWithTruncatedSecurityAlerts() => $$"""
+        {
+          "data": {
+            "search": {
+              "pageInfo": { "hasNextPage": false, "endCursor": null },
+              "nodes": []
+            },
+            "repo0": {
+              "name": "sample-repo",
+              "vulnerabilityAlerts": {
+                "pageInfo": { "hasNextPage": true },
+                "nodes": []
+              }
             }
           }
         }

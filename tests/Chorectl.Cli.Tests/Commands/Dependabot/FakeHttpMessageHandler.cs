@@ -8,6 +8,8 @@ internal sealed class FakeHttpMessageHandler(params string[] jsonResponses) : Ht
 
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         var json = responses.Count > 0 ? responses.Dequeue() : "{}";
         return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
         {

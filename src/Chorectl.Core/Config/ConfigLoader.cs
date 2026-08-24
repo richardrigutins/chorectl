@@ -24,7 +24,34 @@ public sealed class ConfigLoader(string path)
     /// </summary>
     public static string DefaultPath { get; } = ResolveDefaultPath();
 
+    /// <exception cref="ArgumentException">
+    /// The file deserializes but a value fails the same validation <see cref="SetValue"/> applies
+    /// (e.g. a hand-edited <c>merge_method: bogus</c> or a negative <c>merge_poll_interval_seconds</c>).
+    /// <see cref="SetValue"/> can never write such a file since it validates before saving - this
+    /// only catches a file edited by hand outside chorectl. <see cref="SetValue"/> itself reads the
+    /// file via <see cref="LoadRaw"/> instead, deliberately skipping this check - fixing one bad
+    /// key by hand can't require every other key to already be valid, or `config set` would stop
+    /// being the escape hatch it's meant to be for a broken file.
+    /// </exception>
     public ChorectlConfig Load()
+    {
+        var config = LoadRaw();
+
+        ValidateMergeMethod(config.MergeMethod);
+        ValidatePositiveInt(config.MergePollIntervalSeconds, "merge_poll_interval_seconds");
+        ValidatePositiveInt(config.MergePollTimeoutSeconds, "merge_poll_timeout_seconds");
+        ValidatePositiveInt(config.MaxBackoffSeconds, "max_backoff_seconds");
+
+        return config;
+    }
+
+    /// <summary>
+    /// Reads the config file without validating it - only normalizing an explicit YAML null back
+    /// to each field's default (see <see cref="Load"/> for why). Used by <see cref="SetValue"/>,
+    /// which only needs the other, unrelated keys' current values to build the updated record; the
+    /// one key actually being set is validated on its own regardless.
+    /// </summary>
+    private ChorectlConfig LoadRaw()
     {
         if (!File.Exists(path))
         {
@@ -32,7 +59,18 @@ public sealed class ConfigLoader(string path)
         }
 
         var yaml = File.ReadAllText(path);
-        return Deserializer.Deserialize<ChorectlConfig>(yaml) ?? new ChorectlConfig();
+        var config = Deserializer.Deserialize<ChorectlConfig>(yaml) ?? new ChorectlConfig();
+
+        // YamlDotNet assigns an explicit YAML null straight through, overriding the record's own
+        // default initializer (which only kicks in for a key that's missing entirely) - normalize
+        // back to defaults so "exclude_repos:" or "default_select:" with nothing after the colon
+        // still yields the fully-populated config the type's own doc comment promises.
+        return config with
+        {
+            ExcludeRepos = config.ExcludeRepos ?? [],
+            MergeMethod = config.MergeMethod ?? "squash",
+            DefaultSelect = config.DefaultSelect ?? new DefaultSelectConfig(),
+        };
     }
 
     public void Save(ChorectlConfig config)
@@ -53,7 +91,7 @@ public sealed class ConfigLoader(string path)
     /// </summary>
     public ChorectlConfig SetValue(string key, string value)
     {
-        var config = Load();
+        var config = LoadRaw();
         var updated = key switch
         {
             "exclude_repos" => config with { ExcludeRepos = ParseRepoList(value) },
@@ -81,17 +119,39 @@ public sealed class ConfigLoader(string path)
             ? result
             : throw new ArgumentException($"Invalid value '{value}' for '{key}' - expected 'true' or 'false'.");
 
-    private static string ParseMergeMethod(string value) =>
-        value.ToLowerInvariant() switch
-        {
-            "squash" or "merge" or "rebase" => value.ToLowerInvariant(),
-            _ => throw new ArgumentException($"Invalid value '{value}' for 'merge_method' - expected 'squash', 'merge', or 'rebase'."),
-        };
+    private static string ParseMergeMethod(string value)
+    {
+        var normalized = value.ToLowerInvariant();
+        ValidateMergeMethod(normalized);
+        return normalized;
+    }
 
-    private static int ParsePositiveInt(string key, string value) =>
-        int.TryParse(value, out var result) && result > 0
-            ? result
-            : throw new ArgumentException($"Invalid value '{value}' for '{key}' - expected a positive whole number of seconds.");
+    private static void ValidateMergeMethod(string value)
+    {
+        if (value is not ("squash" or "merge" or "rebase"))
+        {
+            throw new ArgumentException($"Invalid value '{value}' for 'merge_method' - expected 'squash', 'merge', or 'rebase'.");
+        }
+    }
+
+    private static int ParsePositiveInt(string key, string value)
+    {
+        if (!int.TryParse(value, out var result))
+        {
+            throw new ArgumentException($"Invalid value '{value}' for '{key}' - expected a positive whole number of seconds.");
+        }
+
+        ValidatePositiveInt(result, key);
+        return result;
+    }
+
+    private static void ValidatePositiveInt(int value, string key)
+    {
+        if (value <= 0)
+        {
+            throw new ArgumentException($"Invalid value '{value}' for '{key}' - expected a positive whole number of seconds.");
+        }
+    }
 
     private static string ResolveDefaultPath()
     {

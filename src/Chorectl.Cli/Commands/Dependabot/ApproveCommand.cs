@@ -10,8 +10,9 @@ namespace Chorectl.Cli.Commands.Dependabot;
 
 /// <summary>
 /// <c>chorectl dependabot approve</c> - lets the user select PRs needing approval and submits
-/// an approving review on each. Repos where review isn't required at all never appear, since
-/// none of their PRs have <c>NeedsApproval</c> set.
+/// an approving review on each, re-verifying each PR is still open immediately before submitting
+/// (Dependabot can close or recreate a PR between list time and act time). Repos where review
+/// isn't required at all never appear, since none of their PRs have <c>NeedsApproval</c> set.
 /// </summary>
 public sealed class ApproveCommand(
     RestClient restClient,
@@ -27,22 +28,13 @@ public sealed class ApproveCommand(
 
     public async Task<int> RunAsync(Settings settings, CancellationToken cancellationToken = default)
     {
-        var repos = await restClient.DiscoverReposAsync(settings.Repo);
-        VerboseLog.Write(console, settings.Verbose, settings.Json, $"Discovered {repos.Count} repo(s)");
-
-        var prs = await graphQlClient.FetchDependabotPrsAsync(repos, cancellationToken);
-        VerboseLog.Write(console, settings.Verbose, settings.Json, $"Fetched {prs.Count} Dependabot PR(s)");
-
-        if (settings.Security)
-        {
-            prs = prs.Where(pr => pr.IsSecurityUpdate).ToList();
-        }
+        var (prs, owners, truncatedRepos) = await DependabotActionSupport.FetchCandidatesAsync(restClient, graphQlClient, console, settings, cancellationToken);
 
         var needsApproval = prs.Where(Classifier.NeedsApproval).OrderBy(p => p.Repo).ThenBy(p => p.Number).ToList();
 
         if (needsApproval.Count == 0)
         {
-            return DependabotActionSupport.ReportNothingToDo<ApproveResult>(console, settings.Json, settings.DryRun, "No Dependabot PRs need approval.");
+            return DependabotActionSupport.ReportNothingToDo<ApproveResult>(console, settings.Json, settings.DryRun, "No Dependabot PRs need approval.", truncatedRepos);
         }
 
         // --json can't render an interactive prompt, so it implies --yes for action commands.
@@ -52,10 +44,8 @@ public sealed class ApproveCommand(
 
         if (selected.Count == 0)
         {
-            return DependabotActionSupport.ReportNothingToDo<ApproveResult>(console, settings.Json, settings.DryRun, "No PRs selected. Nothing approved.");
+            return DependabotActionSupport.ReportNothingToDo<ApproveResult>(console, settings.Json, settings.DryRun, "No PRs selected. Nothing approved.", truncatedRepos);
         }
-
-        var owners = repos.ToDictionary(r => r.Name, r => r.Owner);
 
         if (!settings.Json)
         {
@@ -78,7 +68,7 @@ public sealed class ApproveCommand(
 
         if (settings.Json)
         {
-            JsonOutput.Write(console, new ActionJsonOutput<ApproveResult>(settings.DryRun, results));
+            JsonOutput.Write(console, new ActionJsonOutput<ApproveResult>(settings.DryRun, results, truncatedRepos));
         }
         else
         {
@@ -90,30 +80,43 @@ public sealed class ApproveCommand(
 
     private async Task<ApproveResult> ApproveOneAsync(string owner, DependabotPr pr, bool dryRun, CancellationToken cancellationToken)
     {
+        // Dependabot can close or recreate a PR between list time and act time - re-verify it's
+        // still the same open PR immediately before submitting a review on it.
+        var refetched = await graphQlClient.RefetchAsync(owner, pr, cancellationToken);
+        if (refetched is null)
+        {
+            return new ApproveResult(pr, ApproveOutcome.Skipped, "no longer open");
+        }
+
         // Dry run stops here - the PR would be approved, but no review is submitted (AC-08.1).
         if (dryRun)
         {
-            return new ApproveResult(pr, ApproveOutcome.Approved);
+            return new ApproveResult(refetched, ApproveOutcome.Approved);
         }
 
         try
         {
-            await approver.ApproveAsync(owner, pr, cancellationToken);
-            return new ApproveResult(pr, ApproveOutcome.Approved);
+            await approver.ApproveAsync(owner, refetched, cancellationToken);
+            return new ApproveResult(refetched, ApproveOutcome.Approved);
         }
         catch (GitHubAuthException ex)
         {
-            return new ApproveResult(pr, ApproveOutcome.Failed, $"insufficient permission to review - {ex.Message}");
+            return new ApproveResult(refetched, ApproveOutcome.Failed, $"insufficient permission to review - {ex.Message}");
+        }
+        catch (GitHubRateLimitException)
+        {
+            return new ApproveResult(refetched, ApproveOutcome.Failed, "rate limited by GitHub - try again shortly");
         }
         catch (Exception ex)
         {
-            return new ApproveResult(pr, ApproveOutcome.Failed, $"unexpected error, likely a tool bug - {ex.Message}");
+            return new ApproveResult(refetched, ApproveOutcome.Failed, $"unexpected error, likely a tool bug - {ex.Message}");
         }
     }
 
     private static string DescribeOutcome(ApproveOutcome outcome) => outcome switch
     {
         ApproveOutcome.Approved => "approved",
+        ApproveOutcome.Skipped => "skipped",
         ApproveOutcome.Failed => "failed",
         _ => throw new ArgumentOutOfRangeException(nameof(outcome)),
     };
