@@ -11,8 +11,9 @@ namespace Chorectl.Cli.Commands.Dependabot;
 
 /// <summary>
 /// <c>chorectl dependabot rebase</c> - lets the user select PRs needing a rebase and posts
-/// <c>@dependabot rebase</c> on each. Reports "requested" without waiting for Dependabot to
-/// actually complete the rebase.
+/// <c>@dependabot rebase</c> on each, re-verifying each PR is still open immediately before
+/// commenting (Dependabot can close or recreate a PR between list time and act time). Reports
+/// "requested" without waiting for Dependabot to actually complete the rebase.
 /// </summary>
 public sealed class RebaseCommand(
     RestClient restClient,
@@ -89,34 +90,43 @@ public sealed class RebaseCommand(
 
     private async Task<RebaseResult> RequestOneAsync(string owner, DependabotPr pr, bool dryRun, CancellationToken cancellationToken)
     {
+        // Dependabot can close or recreate a PR between list time and act time - re-verify it's
+        // still the same open PR immediately before commenting on it.
+        var refetched = await graphQlClient.RefetchAsync(owner, pr, cancellationToken);
+        if (refetched is null)
+        {
+            return new RebaseResult(pr, RebaseOutcome.Skipped, "no longer open");
+        }
+
         // Dry run stops here - the rebase would be requested, but no comment is posted (AC-08.1).
         if (dryRun)
         {
-            return new RebaseResult(pr, RebaseOutcome.Requested);
+            return new RebaseResult(refetched, RebaseOutcome.Requested);
         }
 
         try
         {
-            await commenter.CommentAsync(owner, pr, RebaseComment, cancellationToken);
-            return new RebaseResult(pr, RebaseOutcome.Requested);
+            await commenter.CommentAsync(owner, refetched, RebaseComment, cancellationToken);
+            return new RebaseResult(refetched, RebaseOutcome.Requested);
         }
         catch (GitHubAuthException ex)
         {
-            return new RebaseResult(pr, RebaseOutcome.Failed, $"insufficient permission to comment - {ex.Message}");
+            return new RebaseResult(refetched, RebaseOutcome.Failed, $"insufficient permission to comment - {ex.Message}");
         }
         catch (GitHubRateLimitException)
         {
-            return new RebaseResult(pr, RebaseOutcome.Failed, "rate limited by GitHub - try again shortly");
+            return new RebaseResult(refetched, RebaseOutcome.Failed, "rate limited by GitHub - try again shortly");
         }
         catch (Exception ex)
         {
-            return new RebaseResult(pr, RebaseOutcome.Failed, $"unexpected error, likely a tool bug - {ex.Message}");
+            return new RebaseResult(refetched, RebaseOutcome.Failed, $"unexpected error, likely a tool bug - {ex.Message}");
         }
     }
 
     private static string DescribeOutcome(RebaseOutcome outcome) => outcome switch
     {
         RebaseOutcome.Requested => "rebase-requested",
+        RebaseOutcome.Skipped => "skipped",
         RebaseOutcome.Failed => "failed",
         _ => throw new ArgumentOutOfRangeException(nameof(outcome)),
     };

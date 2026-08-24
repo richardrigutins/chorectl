@@ -13,7 +13,10 @@ public class ApproveCommandTests
         var auditLog = new FakeAuditLog();
         var (command, console) = CreateCommand(
             approver,
-            [SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"))],
+            [
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"),
+            ],
             auditLog: auditLog);
         console.Input.PushKey(ConsoleKey.Enter);
 
@@ -33,7 +36,10 @@ public class ApproveCommandTests
         var auditLog = new FakeAuditLog();
         var (command, console) = CreateCommand(
             approver,
-            [SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"))],
+            [
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"),
+            ],
             auditLog: auditLog);
         console.Input.PushKey(ConsoleKey.Enter);
 
@@ -51,7 +57,10 @@ public class ApproveCommandTests
         var auditLog = new FakeAuditLog();
         var (command, console) = CreateCommand(
             approver,
-            [SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"))],
+            [
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"),
+            ],
             auditLog: auditLog);
         console.Input.PushKey(ConsoleKey.Enter);
 
@@ -79,9 +88,12 @@ public class ApproveCommandTests
         var approver = new FakePullRequestApprover();
         var (command, console) = CreateCommand(
             approver,
-            SearchResponse(
-                Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"),
-                Node(2, "Bump right-pad from 1.0.0 to 1.0.1", review: "APPROVED")));
+            [
+                SearchResponse(
+                    Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"),
+                    Node(2, "Bump right-pad from 1.0.0 to 1.0.1", review: "APPROVED")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"),
+            ]);
         console.Input.PushKey(ConsoleKey.Enter);
 
         await command.RunAsync(Settings());
@@ -111,9 +123,13 @@ public class ApproveCommandTests
         var approver = new FakePullRequestApprover();
         var (command, console) = CreateCommand(
             approver,
-            SearchResponse(
-                Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"),
-                Node(2, "Bump right-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED")));
+            [
+                SearchResponse(
+                    Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"),
+                    Node(2, "Bump right-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"),
+                ByNumberResponse(2, "Bump right-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"),
+            ]);
         console.Input.PushKey(ConsoleKey.Enter);
 
         var exitCode = await command.RunAsync(Settings());
@@ -121,7 +137,7 @@ public class ApproveCommandTests
         Assert.Equal(0, exitCode);
         Assert.Equal([1, 2], approver.ApproveCalls.Select(c => c.Pr.Number).Order());
         Assert.Contains("approved", console.Output);
-        Assert.Contains("Done: 2 approved, 0 failed", console.Output);
+        Assert.Contains("Done: 2 approved, 0 skipped, 0 failed", console.Output);
     }
 
     [Fact]
@@ -148,14 +164,17 @@ public class ApproveCommandTests
         var approver = new FakePullRequestApprover { FailWithAuthErrorForPrNumbers = { 1 } };
         var (command, console) = CreateCommand(
             approver,
-            SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED")));
+            [
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"),
+            ]);
         console.Input.PushKey(ConsoleKey.Enter);
 
         var exitCode = await command.RunAsync(Settings());
 
         Assert.Equal(1, exitCode);
         Assert.Contains("failed — insufficient permission to review", console.Output);
-        Assert.Contains("Done: 0 approved, 1 failed", console.Output);
+        Assert.Contains("Done: 0 approved, 0 skipped, 1 failed", console.Output);
     }
 
     [Fact]
@@ -164,7 +183,10 @@ public class ApproveCommandTests
         var approver = new FakePullRequestApprover { FailWithRateLimitErrorForPrNumbers = { 1 } };
         var (command, console) = CreateCommand(
             approver,
-            SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED")));
+            [
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"),
+            ]);
         console.Input.PushKey(ConsoleKey.Enter);
 
         var exitCode = await command.RunAsync(Settings());
@@ -184,7 +206,10 @@ public class ApproveCommandTests
         };
         var (command, console) = CreateCommand(
             approver,
-            SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED")));
+            [
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"),
+            ]);
         console.Input.PushKey(ConsoleKey.Enter);
 
         var exitCode = await command.RunAsync(Settings());
@@ -195,21 +220,45 @@ public class ApproveCommandTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenRefetchShowsPrClosed_SkipsWithoutApproving()
+    {
+        var approver = new FakePullRequestApprover();
+        var (command, console) = CreateCommand(
+            approver,
+            [
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED")),
+                "{ \"data\": { \"repository\": { \"pullRequest\": null } } }",
+            ]);
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        var exitCode = await command.RunAsync(Settings());
+
+        Assert.Equal(0, exitCode);
+        Assert.Empty(approver.ApproveCalls);
+        Assert.Contains("skipped — no longer open", console.Output);
+        Assert.Contains("Done: 0 approved, 1 skipped, 0 failed", console.Output);
+    }
+
+    [Fact]
     public async Task RunAsync_WhenOnePrFails_ContinuesWithTheRestOfTheBatch()
     {
         var approver = new FakePullRequestApprover { FailWithAuthErrorForPrNumbers = { 1 } };
         var (command, console) = CreateCommand(
             approver,
-            SearchResponse(
-                Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"),
-                Node(2, "Bump right-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED")));
+            [
+                SearchResponse(
+                    Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"),
+                    Node(2, "Bump right-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"),
+                ByNumberResponse(2, "Bump right-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"),
+            ]);
         console.Input.PushKey(ConsoleKey.Enter);
 
         var exitCode = await command.RunAsync(Settings());
 
         Assert.Equal(1, exitCode);
         Assert.Equal([1, 2], approver.ApproveCalls.Select(c => c.Pr.Number).Order());
-        Assert.Contains("Done: 1 approved, 1 failed", console.Output);
+        Assert.Contains("Done: 1 approved, 0 skipped, 1 failed", console.Output);
     }
 
     [Fact]
@@ -218,7 +267,10 @@ public class ApproveCommandTests
         var approver = new FakePullRequestApprover();
         var (command, console) = CreateCommand(
             approver,
-            [SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"))]);
+            [
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"),
+            ]);
         console.Input.PushKey(ConsoleKey.Enter);
 
         await command.RunAsync(Settings(verbose: true));
@@ -233,7 +285,10 @@ public class ApproveCommandTests
         var approver = new FakePullRequestApprover();
         var (command, console) = CreateCommand(
             approver,
-            [SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"))]);
+            [
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"),
+            ]);
         console.Input.PushKey(ConsoleKey.Enter);
 
         await command.RunAsync(Settings());
@@ -248,7 +303,10 @@ public class ApproveCommandTests
         var approver = new FakePullRequestApprover();
         var (command, console) = CreateCommand(
             approver,
-            [SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"))]);
+            [
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"),
+            ]);
 
         await command.RunAsync(Settings(yes: true, json: true, verbose: true));
 
@@ -262,10 +320,13 @@ public class ApproveCommandTests
         var approver = new FakePullRequestApprover();
         var (command, console) = CreateCommand(
             approver,
-            [SearchResponseWithSecurityAlert(
-                securityPrNumber: 1,
-                Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"),
-                Node(2, "Bump right-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"))]);
+            [
+                SearchResponseWithSecurityAlert(
+                    securityPrNumber: 1,
+                    Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"),
+                    Node(2, "Bump right-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"),
+            ]);
         console.Input.PushKey(ConsoleKey.Enter);
 
         await command.RunAsync(Settings(security: true));
@@ -283,7 +344,8 @@ public class ApproveCommandTests
             new RepositoryInfo("octocat", "other-repo", IsArchived: false, IsFork: false));
         var restClient = new RestClient(source);
         var handler = new FakeHttpMessageHandler(
-            SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED")));
+            SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED")),
+            ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"));
         var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
         var console = new TestConsole().Interactive();
         console.Input.PushKey(ConsoleKey.Enter);
@@ -320,9 +382,13 @@ public class ApproveCommandTests
         var approver = new FakePullRequestApprover();
         var (command, console) = CreateCommand(
             approver,
-            SearchResponse(
-                Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"),
-                Node(2, "Bump right-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED")));
+            [
+                SearchResponse(
+                    Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"),
+                    Node(2, "Bump right-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"),
+                ByNumberResponse(2, "Bump right-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"),
+            ]);
 
         var exitCode = await command.RunAsync(Settings(yes: true));
 
@@ -336,7 +402,10 @@ public class ApproveCommandTests
         var approver = new FakePullRequestApprover();
         var (command, console) = CreateCommand(
             approver,
-            SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED")));
+            [
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"),
+            ]);
         console.Input.PushKey(ConsoleKey.Enter);
 
         var exitCode = await command.RunAsync(Settings(dryRun: true));
@@ -353,7 +422,10 @@ public class ApproveCommandTests
         var approver = new FakePullRequestApprover();
         var (command, console) = CreateCommand(
             approver,
-            SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED")));
+            [
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED"),
+            ]);
 
         var exitCode = await command.RunAsync(Settings(json: true));
 
@@ -430,6 +502,30 @@ public class ApproveCommandTests
           "repository": { "name": "sample-repo" },
           "labels": { "nodes": [] },
           "commits": { "nodes": [ { "commit": { "statusCheckRollup": { "state": "{{ci}}" } } } ] }
+        }
+        """;
+
+    private static string ByNumberResponse(int number, string title, string mergeStateStatus = "CLEAN", string ci = "SUCCESS", string? review = null, string state = "OPEN") => $$"""
+        {
+          "data": {
+            "repository": {
+              "pullRequest": {
+                "number": {{number}},
+                "title": "{{title}}",
+                "url": "https://github.com/octocat/sample-repo/pull/{{number}}",
+                "headRefName": "dependabot/some-branch-{{number}}",
+                "isDraft": false,
+                "updatedAt": "2026-08-01T12:00:00Z",
+                "reviewDecision": {{(review is null ? "null" : $"\"{review}\"")}},
+                "mergeStateStatus": "{{mergeStateStatus}}",
+                "state": "{{state}}",
+                "body": null,
+                "repository": { "name": "sample-repo" },
+                "labels": { "nodes": [] },
+                "commits": { "nodes": [ { "commit": { "statusCheckRollup": { "state": "{{ci}}" } } } ] }
+              }
+            }
+          }
         }
         """;
 }
