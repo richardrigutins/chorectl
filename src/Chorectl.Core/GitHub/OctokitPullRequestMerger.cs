@@ -22,6 +22,11 @@ public sealed class OctokitPullRequestMerger(IGitHubClient client, string mergeM
 {
     public async Task MergeAsync(string owner, DependabotPr pr, CancellationToken cancellationToken = default)
     {
+        // Octokit.NET's PullRequest.Merge has no CancellationToken overload, so a cancellation
+        // requested while this call is already in flight can't stop it - this only catches the
+        // case where the token was already cancelled before this method got a chance to start.
+        cancellationToken.ThrowIfCancellationRequested();
+
         try
         {
             await client.PullRequest.Merge(owner, pr.Repo, pr.Number, new MergePullRequest { MergeMethod = ParseMergeMethod(mergeMethod) });

@@ -14,6 +14,11 @@ public sealed class OctokitPullRequestCommenter(IGitHubClient client) : IPullReq
 {
     public async Task CommentAsync(string owner, DependabotPr pr, string body, CancellationToken cancellationToken = default)
     {
+        // Octokit.NET's IssueComments.Create has no CancellationToken overload, so a cancellation
+        // requested while this call is already in flight can't stop it - this only catches the
+        // case where the token was already cancelled before this method could start.
+        cancellationToken.ThrowIfCancellationRequested();
+
         try
         {
             await client.Issue.Comment.Create(owner, pr.Repo, pr.Number, body);

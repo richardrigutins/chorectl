@@ -13,6 +13,11 @@ public sealed class OctokitPullRequestApprover(IGitHubClient client) : IPullRequ
 {
     public async Task ApproveAsync(string owner, DependabotPr pr, CancellationToken cancellationToken = default)
     {
+        // Octokit.NET's PullRequestReviews.Create has no CancellationToken overload, so a
+        // cancellation requested while this call is already in flight can't stop it - this only
+        // catches the case where the token was already cancelled before this method could start.
+        cancellationToken.ThrowIfCancellationRequested();
+
         try
         {
             await client.PullRequest.Review.Create(owner, pr.Repo, pr.Number, new PullRequestReviewCreate { Event = PullRequestReviewEvent.Approve });
