@@ -113,33 +113,44 @@ public sealed class MergeCommand(
             return new MergeResult(refetched, MergeOutcome.Merged);
         }
 
+        // The only retryable failure is MergeNotReadyException (US-12/AC-12.1) - waiting won't
+        // fix a permission problem (AC-12.2) or a likely tool bug (404, 422, unrecognized
+        // response; AC-12.3), so both of those skip immediately instead of entering the poll loop.
+        var result = await TryMergeAsync(owner, refetched, cancellationToken);
+        return result ?? await PollAndRetryMergeAsync(owner, refetched, json, cancellationToken);
+    }
+
+    /// <summary>
+    /// Attempts <see cref="IPullRequestMerger.MergeAsync"/> and classifies the outcome. Returns
+    /// <see langword="null"/> only for <see cref="MergeNotReadyException"/> - the one retryable
+    /// failure - since what "retryable" means differs by call site (enter the poll loop for the
+    /// first attempt; keep looping for a poll-loop retry). Every other outcome, success included,
+    /// is a terminal <see cref="MergeResult"/>.
+    /// </summary>
+    private async Task<MergeResult?> TryMergeAsync(string owner, DependabotPr pr, CancellationToken cancellationToken)
+    {
         try
         {
-            await merger.MergeAsync(owner, refetched, cancellationToken);
-            return new MergeResult(refetched, MergeOutcome.Merged);
+            await merger.MergeAsync(owner, pr, cancellationToken);
+            return new MergeResult(pr, MergeOutcome.Merged);
         }
         catch (MergeNotReadyException)
         {
-            // The only retryable failure - covers both "Dependabot is actively rebasing" and
-            // "nothing's rebased it yet", which look identical from the API (US-12/AC-12.1).
-            return await PollAndRetryMergeAsync(owner, refetched, json, cancellationToken);
+            return null;
         }
         catch (GitHubAuthException ex)
         {
-            // Waiting won't fix a permission problem - skip immediately, no poll (AC-12.2).
-            return new MergeResult(refetched, MergeOutcome.Failed, $"insufficient permission to merge - {ex.Message}");
+            return new MergeResult(pr, MergeOutcome.Failed, $"insufficient permission to merge - {ex.Message}");
         }
         catch (GitHubRateLimitException)
         {
             // Distinct from GitHubAuthException - not a permission problem, and not the tool's
             // fault either. Backoff-and-retry is Phase 3 (US-11); for now, report it accurately.
-            return new MergeResult(refetched, MergeOutcome.Failed, "rate limited by GitHub - try again shortly");
+            return new MergeResult(pr, MergeOutcome.Failed, "rate limited by GitHub - try again shortly");
         }
         catch (Exception ex)
         {
-            // Not a per-PR condition but a likely tool bug (404, 422, unrecognized response) -
-            // skip immediately with the raw error surfaced rather than a generic "not ready" (AC-12.3).
-            return new MergeResult(refetched, MergeOutcome.Failed, $"unexpected error, likely a tool bug - {ex.Message}");
+            return new MergeResult(pr, MergeOutcome.Failed, $"unexpected error, likely a tool bug - {ex.Message}");
         }
     }
 
@@ -177,27 +188,13 @@ public sealed class MergeCommand(
             // once the conflict state clears (AC-03.4).
             if (current.MergeStateStatus != MergeStateStatuses.Behind && current.Ci == CiStatus.Passing)
             {
-                try
+                var result = await TryMergeAsync(owner, current, cancellationToken);
+                if (result is not null)
                 {
-                    await merger.MergeAsync(owner, current, cancellationToken);
-                    return new MergeResult(current, MergeOutcome.Merged);
+                    return result;
                 }
-                catch (MergeNotReadyException)
-                {
-                    // Keep polling against the same timeout.
-                }
-                catch (GitHubAuthException ex)
-                {
-                    return new MergeResult(current, MergeOutcome.Failed, $"insufficient permission to merge - {ex.Message}");
-                }
-                catch (GitHubRateLimitException)
-                {
-                    return new MergeResult(current, MergeOutcome.Failed, "rate limited by GitHub - try again shortly");
-                }
-                catch (Exception ex)
-                {
-                    return new MergeResult(current, MergeOutcome.Failed, $"unexpected error, likely a tool bug - {ex.Message}");
-                }
+
+                // null means MergeNotReadyException - keep polling against the same timeout.
             }
         }
 
