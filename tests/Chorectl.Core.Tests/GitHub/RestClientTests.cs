@@ -131,6 +131,21 @@ public class RestClientTests
     }
 
     [Fact]
+    public async Task DiscoverReposAsync_ExcludesReposRegardlessOfCasing()
+    {
+        // GitHub repo names are case-insensitive - a casing mismatch between the config file and
+        // the repo's actual name shouldn't silently fail to exclude it.
+        var source = new FakeRepositorySource(
+            new RepositoryInfo("octocat", "keep-me", IsArchived: false, IsFork: false),
+            new RepositoryInfo("octocat", "Exclude-Me", IsArchived: false, IsFork: false));
+        var client = new RestClient(source, excludeRepos: new HashSet<string> { "exclude-me" });
+
+        var repos = await client.DiscoverReposAsync();
+
+        Assert.Equal(["keep-me"], repos.Select(r => r.Name));
+    }
+
+    [Fact]
     public async Task DiscoverReposAsync_WithRepoName_WhenRepoIsExcluded_ReturnsEmpty()
     {
         var source = new FakeRepositorySource(
