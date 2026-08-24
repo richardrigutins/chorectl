@@ -156,6 +156,21 @@ public class ListCommandTests
     }
 
     [Fact]
+    public async Task RunAsync_WithCancelledToken_CancelsTheFetchInsteadOfIgnoringIt()
+    {
+        var console = new TestConsole();
+        var restClient = new RestClient(new FakeRepositorySource(
+            new RepositoryInfo("octocat", "sample-repo", IsArchived: false, IsFork: false)));
+        var handler = new FakeHttpMessageHandler(SingleNodeResponse());
+        var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
+        var command = new ListCommand(restClient, graphQlClient, console);
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => command.RunAsync(Settings(), cts.Token));
+    }
+
+    [Fact]
     public async Task RunAsync_WithUnknownRepo_ThrowsRepositoryNotFoundException()
     {
         var console = new TestConsole();
