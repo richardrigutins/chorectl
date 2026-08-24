@@ -17,13 +17,17 @@ public sealed class GraphQlClient(HttpClient httpClient)
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
     /// <summary>
-    /// Fetches every open Dependabot PR across the given repos.
+    /// Fetches every open Dependabot PR across the given repos. Also returns the names of any
+    /// repos whose open vulnerability alert count exceeds the 100-alert page this fetches in one
+    /// shot (see <see cref="Queries.DependabotPrSearch"/>) - callers should warn instead of
+    /// silently treating <see cref="DependabotPr.IsSecurityUpdate"/> as complete for those repos.
     /// </summary>
-    public async Task<IReadOnlyList<DependabotPr>> FetchDependabotPrsAsync(
+    public async Task<(IReadOnlyList<DependabotPr> Prs, IReadOnlyList<string> ReposWithTruncatedSecurityAlerts)> FetchDependabotPrsAsync(
         IReadOnlyList<RepositoryInfo> repos,
         CancellationToken cancellationToken = default)
     {
         var results = new List<DependabotPr>();
+        var truncatedRepos = new HashSet<string>();
 
         foreach (var batch in BuildSearchBatches(repos))
         {
@@ -31,14 +35,15 @@ public sealed class GraphQlClient(HttpClient httpClient)
             string? cursor = null;
             do
             {
-                var (search, securityPrs) = await RunSearchAsync(query, batch.SearchQuery, cursor, cancellationToken);
+                var (search, securityPrs, batchTruncatedRepos) = await RunSearchAsync(query, batch.SearchQuery, cursor, cancellationToken);
                 results.AddRange(search.Nodes.Select(node =>
                     ToDependabotPr(node, securityPrs.Contains((node.Repository.Name, node.Number)))));
+                truncatedRepos.UnionWith(batchTruncatedRepos);
                 cursor = search.PageInfo.HasNextPage ? search.PageInfo.EndCursor : null;
             } while (cursor is not null);
         }
 
-        return results;
+        return (results, truncatedRepos.Order().ToList());
     }
 
     /// <summary>
@@ -68,7 +73,7 @@ public sealed class GraphQlClient(HttpClient httpClient)
         return ToDependabotPr(node, pr.IsSecurityUpdate);
     }
 
-    private async Task<(SearchConnection Search, HashSet<(string Repo, int Number)> SecurityPrs)> RunSearchAsync(
+    private async Task<(SearchConnection Search, HashSet<(string Repo, int Number)> SecurityPrs, List<string> TruncatedRepos)> RunSearchAsync(
         string query, string searchQuery, string? cursor, CancellationToken cancellationToken)
     {
         var request = new { query, variables = new { searchQuery, after = cursor } };
@@ -87,17 +92,23 @@ public sealed class GraphQlClient(HttpClient httpClient)
 
         var data = root.GetProperty("data");
         var search = data.GetProperty("search").Deserialize<SearchConnection>(JsonOptions)!;
-        return (search, ParseSecurityPrs(data));
+        var (securityPrs, truncatedRepos) = ParseSecurityPrs(data);
+        return (search, securityPrs, truncatedRepos);
     }
 
     /// <summary>
     /// Cross-references each aliased <c>repository(...)</c> field's <c>vulnerabilityAlerts</c>
     /// against <c>dependabotUpdate.pullRequest.number</c> to build the set of (repo, PR number)
-    /// pairs that are security updates. See <see cref="Queries.DependabotPrSearch"/>.
+    /// pairs that are security updates, and separately collects the names of repos whose
+    /// <c>vulnerabilityAlerts.pageInfo.hasNextPage</c> is true - meaning that repo has more than
+    /// 100 open alerts and some may be missing from the set above. See
+    /// <see cref="Queries.DependabotPrSearch"/>.
     /// </summary>
-    private static HashSet<(string Repo, int Number)> ParseSecurityPrs(JsonElement data)
+    private static (HashSet<(string Repo, int Number)> SecurityPrs, List<string> TruncatedRepos) ParseSecurityPrs(JsonElement data)
     {
         var securityPrs = new HashSet<(string, int)>();
+        var truncatedRepos = new List<string>();
+
         foreach (var property in data.EnumerateObject())
         {
             if (property.Name == "search" || property.Value.ValueKind != JsonValueKind.Object)
@@ -121,9 +132,17 @@ public sealed class GraphQlClient(HttpClient httpClient)
                     securityPrs.Add((repoName, prEl.GetProperty("number").GetInt32()));
                 }
             }
+
+            if (alertsEl.TryGetProperty("pageInfo", out var pageInfoEl)
+                && pageInfoEl.ValueKind == JsonValueKind.Object
+                && pageInfoEl.TryGetProperty("hasNextPage", out var hasNextPageEl)
+                && hasNextPageEl.ValueKind == JsonValueKind.True)
+            {
+                truncatedRepos.Add(repoName);
+            }
         }
 
-        return securityPrs;
+        return (securityPrs, truncatedRepos);
     }
 
     private static List<SearchBatch> BuildSearchBatches(IReadOnlyList<RepositoryInfo> repos)
@@ -159,6 +178,9 @@ public sealed class GraphQlClient(HttpClient httpClient)
             repo{{i}}: repository(owner: {{JsonSerializer.Serialize(repo.Owner)}}, name: {{JsonSerializer.Serialize(repo.Name)}}) {
               name
               vulnerabilityAlerts(first: 100) {
+                pageInfo {
+                  hasNextPage
+                }
                 nodes {
                   dependabotUpdate {
                     pullRequest {

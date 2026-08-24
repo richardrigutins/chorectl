@@ -33,8 +33,18 @@ internal static class DependabotActionSupport
         var repos = await restClient.DiscoverReposAsync(settings.Repo);
         VerboseLog.Write(console, settings.Verbose, settings.Json, $"Discovered {repos.Count} repo(s)");
 
-        var prs = await graphQlClient.FetchDependabotPrsAsync(repos, cancellationToken);
+        var (prs, truncatedRepos) = await graphQlClient.FetchDependabotPrsAsync(repos, cancellationToken);
         VerboseLog.Write(console, settings.Verbose, settings.Json, $"Fetched {prs.Count} Dependabot PR(s)");
+
+        if (!settings.Json && truncatedRepos.Count > 0)
+        {
+            // Rare (a repo would need >100 open Dependabot security alerts), but worth surfacing
+            // instead of silently under-reporting IsSecurityUpdate for the overflow.
+            console.MarkupLine(
+                $"[yellow]Warning:[/] {string.Join(", ", truncatedRepos.Select(r => r.EscapeMarkup()))} "
+                + $"{(truncatedRepos.Count == 1 ? "has" : "have")} more than 100 open vulnerability alerts - "
+                + "some security-update PRs there may not be flagged.");
+        }
 
         if (settings.Security)
         {

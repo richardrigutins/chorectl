@@ -13,7 +13,7 @@ public class GraphQlClientTests
         var handler = new FakeHttpMessageHandler();
         var client = CreateClient(handler);
 
-        var prs = await client.FetchDependabotPrsAsync([]);
+        var (prs, _) = await client.FetchDependabotPrsAsync([]);
 
         Assert.Empty(prs);
         Assert.Empty(handler.RequestBodies);
@@ -25,7 +25,7 @@ public class GraphQlClientTests
         var handler = new FakeHttpMessageHandler(await File.ReadAllTextAsync(FixturePath));
         var client = CreateClient(handler);
 
-        var prs = await client.FetchDependabotPrsAsync([new RepositoryInfo("octocat", "sample-repo", IsArchived: false, IsFork: false)]);
+        var (prs, _) = await client.FetchDependabotPrsAsync([new RepositoryInfo("octocat", "sample-repo", IsArchived: false, IsFork: false)]);
 
         var pr = Assert.Single(prs);
         Assert.Equal("sample-repo", pr.Repo);
@@ -59,7 +59,7 @@ public class GraphQlClientTests
             """));
         var client = CreateClient(handler);
 
-        var prs = await client.FetchDependabotPrsAsync([new RepositoryInfo("octocat", "repo", IsArchived: false, IsFork: false)]);
+        var (prs, _) = await client.FetchDependabotPrsAsync([new RepositoryInfo("octocat", "repo", IsArchived: false, IsFork: false)]);
 
         Assert.Equal(expected, Assert.Single(prs).Ci);
     }
@@ -77,7 +77,7 @@ public class GraphQlClientTests
             """, title: title));
         var client = CreateClient(handler);
 
-        var prs = await client.FetchDependabotPrsAsync([new RepositoryInfo("octocat", "repo", IsArchived: false, IsFork: false)]);
+        var (prs, _) = await client.FetchDependabotPrsAsync([new RepositoryInfo("octocat", "repo", IsArchived: false, IsFork: false)]);
 
         Assert.Equal(expected, Assert.Single(prs).IsGrouped);
     }
@@ -106,7 +106,7 @@ public class GraphQlClientTests
             """));
         var client = CreateClient(handler);
 
-        var prs = await client.FetchDependabotPrsAsync([new RepositoryInfo("octocat", "repo", IsArchived: false, IsFork: false)]);
+        var (prs, _) = await client.FetchDependabotPrsAsync([new RepositoryInfo("octocat", "repo", IsArchived: false, IsFork: false)]);
 
         Assert.Equal("Dependabot is rebasing this PR due to a merge conflict.", Assert.Single(prs).Body);
     }
@@ -121,7 +121,7 @@ public class GraphQlClientTests
             """));
         var client = CreateClient(handler);
 
-        var prs = await client.FetchDependabotPrsAsync([new RepositoryInfo("octocat", "repo", IsArchived: false, IsFork: false)]);
+        var (prs, _) = await client.FetchDependabotPrsAsync([new RepositoryInfo("octocat", "repo", IsArchived: false, IsFork: false)]);
 
         Assert.Equal(CiStatus.NoChecks, Assert.Single(prs).Ci);
     }
@@ -141,7 +141,7 @@ public class GraphQlClientTests
             """));
         var client = CreateClient(handler);
 
-        var prs = await client.FetchDependabotPrsAsync([new RepositoryInfo("octocat", "repo", IsArchived: false, IsFork: false)]);
+        var (prs, _) = await client.FetchDependabotPrsAsync([new RepositoryInfo("octocat", "repo", IsArchived: false, IsFork: false)]);
 
         Assert.Equal(expected, Assert.Single(prs).Review);
     }
@@ -163,7 +163,7 @@ public class GraphQlClientTests
         var handler = new FakeHttpMessageHandler(firstPage, secondPage);
         var client = CreateClient(handler);
 
-        var prs = await client.FetchDependabotPrsAsync([new RepositoryInfo("octocat", "repo", IsArchived: false, IsFork: false)]);
+        var (prs, _) = await client.FetchDependabotPrsAsync([new RepositoryInfo("octocat", "repo", IsArchived: false, IsFork: false)]);
 
         Assert.Equal(2, handler.RequestBodies.Count);
         Assert.Contains("cursor-1", handler.RequestBodies[1]);
@@ -241,7 +241,7 @@ public class GraphQlClientTests
         var handler = new FakeHttpMessageHandler(response);
         var client = CreateClient(handler);
 
-        var prs = await client.FetchDependabotPrsAsync([new RepositoryInfo("octocat", "repo", IsArchived: false, IsFork: false)]);
+        var (prs, _) = await client.FetchDependabotPrsAsync([new RepositoryInfo("octocat", "repo", IsArchived: false, IsFork: false)]);
 
         Assert.True(Assert.Single(prs).IsSecurityUpdate);
     }
@@ -268,7 +268,7 @@ public class GraphQlClientTests
         var handler = new FakeHttpMessageHandler(response);
         var client = CreateClient(handler);
 
-        var prs = await client.FetchDependabotPrsAsync([new RepositoryInfo("octocat", "repo", IsArchived: false, IsFork: false)]);
+        var (prs, _) = await client.FetchDependabotPrsAsync([new RepositoryInfo("octocat", "repo", IsArchived: false, IsFork: false)]);
 
         Assert.False(Assert.Single(prs).IsSecurityUpdate);
     }
@@ -302,13 +302,54 @@ public class GraphQlClientTests
         var handler = new FakeHttpMessageHandler(response);
         var client = CreateClient(handler);
 
-        var prs = await client.FetchDependabotPrsAsync([
+        var (prs, _) = await client.FetchDependabotPrsAsync([
             new RepositoryInfo("octocat", "repo-a", IsArchived: false, IsFork: false),
             new RepositoryInfo("octocat", "repo-b", IsArchived: false, IsFork: false),
         ]);
 
         Assert.True(prs.Single(p => p.Repo == "repo-a").IsSecurityUpdate);
         Assert.False(prs.Single(p => p.Repo == "repo-b").IsSecurityUpdate);
+    }
+
+    [Fact]
+    public async Task FetchDependabotPrsAsync_WhenVulnerabilityAlertsHasNextPage_ReportsTheRepoAsTruncated()
+    {
+        var response = $$"""
+            {
+              "data": {
+                "search": {
+                  "pageInfo": { "hasNextPage": false, "endCursor": null },
+                  "nodes": [
+                    {{PrNodeJson(number: 7, repo: "repo-a")}},
+                    {{PrNodeJson(number: 8, repo: "repo-b")}}
+                  ]
+                },
+                "repo0": {
+                  "name": "repo-a",
+                  "vulnerabilityAlerts": {
+                    "pageInfo": { "hasNextPage": true },
+                    "nodes": []
+                  }
+                },
+                "repo1": {
+                  "name": "repo-b",
+                  "vulnerabilityAlerts": {
+                    "pageInfo": { "hasNextPage": false },
+                    "nodes": []
+                  }
+                }
+              }
+            }
+            """;
+        var handler = new FakeHttpMessageHandler(response);
+        var client = CreateClient(handler);
+
+        var (_, truncatedRepos) = await client.FetchDependabotPrsAsync([
+            new RepositoryInfo("octocat", "repo-a", IsArchived: false, IsFork: false),
+            new RepositoryInfo("octocat", "repo-b", IsArchived: false, IsFork: false),
+        ]);
+
+        Assert.Equal(["repo-a"], truncatedRepos);
     }
 
     [Fact]
@@ -337,7 +378,7 @@ public class GraphQlClientTests
         var handler = new FakeHttpMessageHandler(response);
         var client = CreateClient(handler);
 
-        var prs = await client.FetchDependabotPrsAsync([new RepositoryInfo("octocat", "repo", IsArchived: false, IsFork: false)]);
+        var (prs, _) = await client.FetchDependabotPrsAsync([new RepositoryInfo("octocat", "repo", IsArchived: false, IsFork: false)]);
 
         Assert.False(Assert.Single(prs).IsSecurityUpdate);
     }
