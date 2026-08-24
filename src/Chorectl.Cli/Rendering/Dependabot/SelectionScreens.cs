@@ -33,48 +33,55 @@ public static class SelectionScreens
     public static IReadOnlyList<DependabotPr> PromptApprove(IAnsiConsole console, IReadOnlyList<DependabotPr> needsApprovalPrs) =>
         Prompt(console, "Select PRs to approve [grey](space to toggle, enter to confirm)[/]", needsApprovalPrs, _ => true);
 
+    /// <summary>
+    /// A single row in the selection prompt: either a real PR or a repo group header. Using this
+    /// (rather than the PR's rendered display text) as the prompt's underlying choice identity
+    /// means two PRs that render identically - e.g. the same dependency bumped the same way in two
+    /// different repos, a common occurrence when triaging across many repos at once - stay
+    /// distinguishable. <see cref="DependabotPr"/> is a record, so equality already includes
+    /// <see cref="DependabotPr.Repo"/> and <see cref="DependabotPr.Number"/>.
+    /// </summary>
+    private readonly record struct Choice(DependabotPr? Pr, string? Header)
+    {
+        public static Choice ForPr(DependabotPr pr) => new(pr, null);
+
+        public static Choice ForHeader(string header) => new(null, header);
+    }
+
     private static IReadOnlyList<DependabotPr> Prompt(
         IAnsiConsole console,
         string title,
         IReadOnlyList<DependabotPr> prs,
         Func<DependabotPr, bool> defaultSelected)
     {
-        var byLabel = new Dictionary<string, DependabotPr>();
-        var prompt = new MultiSelectionPrompt<string>()
+        var prompt = new MultiSelectionPrompt<Choice>()
             .Title(title)
             .PageSize(15)
-            .NotRequired();
+            .NotRequired()
+            .UseConverter(choice => choice.Pr is { } pr ? Describe(pr) : choice.Header!.EscapeMarkup());
 
         foreach (var repoGroup in prs.GroupBy(pr => pr.Repo).OrderBy(g => g.Key))
         {
             var prsInRepo = repoGroup.ToList();
-            var repoLabel = repoGroup.Key.EscapeMarkup();
-            var labels = prsInRepo.Select(pr =>
-            {
-                var label = Describe(pr);
-                byLabel[label] = pr;
-                return label;
-            }).ToList();
+            var header = Choice.ForHeader(repoGroup.Key);
+            var choices = prsInRepo.Select(Choice.ForPr).ToList();
 
-            prompt.AddChoiceGroup(repoLabel, labels);
+            prompt.AddChoiceGroup(header, choices);
 
-            foreach (var pr in prsInRepo.Where(defaultSelected))
+            foreach (var choice in choices.Where(c => defaultSelected(c.Pr!)))
             {
-                prompt.Select(Describe(pr));
+                prompt.Select(choice);
             }
 
             if (prsInRepo.TrueForAll(pr => defaultSelected(pr)))
             {
-                prompt.Select(repoLabel);
+                prompt.Select(header);
             }
         }
 
-        var selectedLabels = console.Prompt(prompt);
+        var selected = console.Prompt(prompt);
 
-        return selectedLabels
-            .Where(byLabel.ContainsKey)
-            .Select(label => byLabel[label])
-            .ToList();
+        return selected.Where(c => c.Pr is not null).Select(c => c.Pr!).ToList();
     }
 
     private static string Describe(DependabotPr pr)

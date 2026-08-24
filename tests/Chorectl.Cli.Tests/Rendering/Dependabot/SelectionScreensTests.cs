@@ -42,15 +42,33 @@ public class SelectionScreensTests
         Assert.Empty(selected);
     }
 
+    [Fact]
+    public void PromptMerge_WithIdenticallyDescribedPrsInDifferentRepos_KeepsBothDistinctAndPreSelected()
+    {
+        // Two different repos bumping the same dependency the same way (e.g. actions/checkout)
+        // render identical display text - the selection screen must still tell them apart.
+        var console = new TestConsole().Interactive();
+        console.Input.PushKey(ConsoleKey.Enter);
+        var prA = Pr(repo: "repo-a");
+        var prB = Pr(repo: "repo-b");
+
+        var selected = SelectionScreens.PromptMerge(console, [prA, prB]);
+
+        Assert.Equal(2, selected.Count);
+        Assert.Contains(prA, selected);
+        Assert.Contains(prB, selected);
+    }
+
     private static DependabotPr Pr(
+        string repo = "repo",
         SemverLevel semverLevel = SemverLevel.Patch,
         bool isGrouped = false,
         bool isSecurityUpdate = false) => new()
         {
-            Repo = "repo",
+            Repo = repo,
             Number = 1,
             Title = "Bump some-dependency from 1.0.0 to 1.0.1",
-            Url = "https://github.com/octocat/repo/pull/1",
+            Url = $"https://github.com/octocat/{repo}/pull/1",
             HeadRefName = "dependabot/some-branch",
             DependencyName = "some-dependency",
             FromVersion = "1.0.0",
