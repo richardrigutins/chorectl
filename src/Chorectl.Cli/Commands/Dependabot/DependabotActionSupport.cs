@@ -2,18 +2,48 @@ using Chorectl.Cli.Rendering;
 using Chorectl.Cli.Rendering.Dependabot;
 using Chorectl.Core.Audit;
 using Chorectl.Core.Domain.Dependabot;
+using Chorectl.Core.GitHub;
 using Spectre.Console;
 
 namespace Chorectl.Cli.Commands.Dependabot;
 
 /// <summary>
-/// Plumbing shared by the dependabot action commands (merge/rebase/approve): reporting an empty
-/// result set, and executing a selected batch grouped by repo while auditing each outcome. The
-/// per-PR action itself, and how each result renders, stays with each command - that's the part
-/// that actually differs between merge (poll/retry), rebase, and approve (both fire-and-forget).
+/// Plumbing shared by every dependabot subcommand (list/merge/rebase/approve): discovering repos
+/// and fetching candidate PRs, reporting an empty result set, and executing a selected batch
+/// grouped by repo while auditing each outcome. The per-PR action itself, and how each result
+/// renders, stays with each command - that's the part that actually differs between merge
+/// (poll/retry), rebase, and approve (both fire-and-forget).
 /// </summary>
 internal static class DependabotActionSupport
 {
+    /// <summary>
+    /// Discovers repos (scoped to <see cref="DependabotSettings.Repo"/> when set) and fetches
+    /// their open Dependabot PRs, applying the <c>--security</c> filter shared by every
+    /// subcommand. Also returns a repo name -&gt; owner lookup, since every action command needs
+    /// it to call GitHub mutations (<see cref="ExecuteGroupedByRepoAsync{TResult}"/>'s
+    /// <c>owners</c> parameter) even though <c>list</c> doesn't.
+    /// </summary>
+    public static async Task<(IReadOnlyList<DependabotPr> Prs, IReadOnlyDictionary<string, string> Owners)> FetchCandidatesAsync(
+        RestClient restClient,
+        GraphQlClient graphQlClient,
+        IAnsiConsole console,
+        DependabotSettings settings,
+        CancellationToken cancellationToken)
+    {
+        var repos = await restClient.DiscoverReposAsync(settings.Repo);
+        VerboseLog.Write(console, settings.Verbose, settings.Json, $"Discovered {repos.Count} repo(s)");
+
+        var prs = await graphQlClient.FetchDependabotPrsAsync(repos, cancellationToken);
+        VerboseLog.Write(console, settings.Verbose, settings.Json, $"Fetched {prs.Count} Dependabot PR(s)");
+
+        if (settings.Security)
+        {
+            prs = prs.Where(pr => pr.IsSecurityUpdate).ToList();
+        }
+
+        return (prs, repos.ToDictionary(r => r.Name, r => r.Owner));
+    }
+
     public static int ReportNothingToDo<TResult>(IAnsiConsole console, bool json, bool dryRun, string message)
     {
         if (json)

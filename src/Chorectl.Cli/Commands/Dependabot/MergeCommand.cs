@@ -39,16 +39,7 @@ public sealed class MergeCommand(
 
     public async Task<int> RunAsync(Settings settings, CancellationToken cancellationToken = default)
     {
-        var repos = await restClient.DiscoverReposAsync(settings.Repo);
-        VerboseLog.Write(console, settings.Verbose, settings.Json, $"Discovered {repos.Count} repo(s)");
-
-        var prs = await graphQlClient.FetchDependabotPrsAsync(repos, cancellationToken);
-        VerboseLog.Write(console, settings.Verbose, settings.Json, $"Fetched {prs.Count} Dependabot PR(s)");
-
-        if (settings.Security)
-        {
-            prs = prs.Where(pr => pr.IsSecurityUpdate).ToList();
-        }
+        var (prs, owners) = await DependabotActionSupport.FetchCandidatesAsync(restClient, graphQlClient, console, settings, cancellationToken);
 
         var ready = prs.Where(Classifier.IsReadyToMerge).OrderBy(p => p.Repo).ThenBy(p => p.Number).ToList();
 
@@ -66,8 +57,6 @@ public sealed class MergeCommand(
         {
             return DependabotActionSupport.ReportNothingToDo<MergeResult>(console, settings.Json, settings.DryRun, "No PRs selected. Nothing merged.");
         }
-
-        var owners = repos.ToDictionary(r => r.Name, r => r.Owner);
 
         if (!settings.Json)
         {

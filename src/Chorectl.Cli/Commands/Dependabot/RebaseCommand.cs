@@ -35,16 +35,7 @@ public sealed class RebaseCommand(
 
     public async Task<int> RunAsync(Settings settings, CancellationToken cancellationToken = default)
     {
-        var repos = await restClient.DiscoverReposAsync(settings.Repo);
-        VerboseLog.Write(console, settings.Verbose, settings.Json, $"Discovered {repos.Count} repo(s)");
-
-        var prs = await graphQlClient.FetchDependabotPrsAsync(repos, cancellationToken);
-        VerboseLog.Write(console, settings.Verbose, settings.Json, $"Fetched {prs.Count} Dependabot PR(s)");
-
-        if (settings.Security)
-        {
-            prs = prs.Where(pr => pr.IsSecurityUpdate).ToList();
-        }
+        var (prs, owners) = await DependabotActionSupport.FetchCandidatesAsync(restClient, graphQlClient, console, settings, cancellationToken);
 
         var candidates = (settings.All ? prs : prs.Where(Classifier.NeedsRebase))
             .OrderBy(p => p.Repo).ThenBy(p => p.Number).ToList();
@@ -64,8 +55,6 @@ public sealed class RebaseCommand(
         {
             return DependabotActionSupport.ReportNothingToDo<RebaseResult>(console, settings.Json, settings.DryRun, "No PRs selected. Nothing requested.");
         }
-
-        var owners = repos.ToDictionary(r => r.Name, r => r.Owner);
 
         if (!settings.Json)
         {
