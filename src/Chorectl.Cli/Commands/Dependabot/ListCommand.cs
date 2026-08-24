@@ -20,11 +20,11 @@ public sealed class ListCommand(RestClient restClient, GraphQlClient graphQlClie
     /// <summary>Discovers repos, fetches open Dependabot PRs, and renders the overview table (or JSON).</summary>
     public async Task<int> RunAsync(Settings settings, CancellationToken cancellationToken = default)
     {
-        var (prs, _) = await DependabotActionSupport.FetchCandidatesAsync(restClient, graphQlClient, console, settings, cancellationToken);
+        var (prs, _, truncatedRepos) = await DependabotActionSupport.FetchCandidatesAsync(restClient, graphQlClient, console, settings, cancellationToken);
 
         if (settings.Json)
         {
-            JsonOutput.Write(console, prs);
+            JsonOutput.Write(console, new ListJsonOutput(prs, truncatedRepos));
         }
         else
         {

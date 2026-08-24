@@ -21,9 +21,13 @@ internal static class DependabotActionSupport
     /// their open Dependabot PRs, applying the <c>--security</c> filter shared by every
     /// subcommand. Also returns a repo name -&gt; owner lookup, since every action command needs
     /// it to call GitHub mutations (<see cref="ExecuteGroupedByRepoAsync{TResult}"/>'s
-    /// <c>owners</c> parameter) even though <c>list</c> doesn't.
+    /// <c>owners</c> parameter) even though <c>list</c> doesn't, and the names of any repos whose
+    /// <c>vulnerabilityAlerts</c> page was truncated (so <c>IsSecurityUpdate</c> may be
+    /// incomplete for them) - printed as a console warning here under non-<c>--json</c> output,
+    /// but callers must fold it into their own <c>--json</c> payload themselves, since printing it
+    /// there would break structured output.
     /// </summary>
-    public static async Task<(IReadOnlyList<DependabotPr> Prs, IReadOnlyDictionary<string, string> Owners)> FetchCandidatesAsync(
+    public static async Task<(IReadOnlyList<DependabotPr> Prs, IReadOnlyDictionary<string, string> Owners, IReadOnlyList<string> ReposWithTruncatedSecurityAlerts)> FetchCandidatesAsync(
         RestClient restClient,
         GraphQlClient graphQlClient,
         IAnsiConsole console,
@@ -39,7 +43,8 @@ internal static class DependabotActionSupport
         if (!settings.Json && truncatedRepos.Count > 0)
         {
             // Rare (a repo would need >100 open Dependabot security alerts), but worth surfacing
-            // instead of silently under-reporting IsSecurityUpdate for the overflow.
+            // instead of silently under-reporting IsSecurityUpdate for the overflow. --json gets
+            // the same information via ReposWithTruncatedSecurityAlerts on the JSON payload instead.
             console.MarkupLine(
                 $"[yellow]Warning:[/] {string.Join(", ", truncatedRepos.Select(r => r.EscapeMarkup()))} "
                 + $"{(truncatedRepos.Count == 1 ? "has" : "have")} more than 100 open vulnerability alerts - "
@@ -51,14 +56,14 @@ internal static class DependabotActionSupport
             prs = prs.Where(pr => pr.IsSecurityUpdate).ToList();
         }
 
-        return (prs, repos.ToDictionary(r => r.Name, r => r.Owner));
+        return (prs, repos.ToDictionary(r => r.Name, r => r.Owner), truncatedRepos);
     }
 
-    public static int ReportNothingToDo<TResult>(IAnsiConsole console, bool json, bool dryRun, string message)
+    public static int ReportNothingToDo<TResult>(IAnsiConsole console, bool json, bool dryRun, string message, IReadOnlyList<string> truncatedRepos)
     {
         if (json)
         {
-            JsonOutput.Write(console, new ActionJsonOutput<TResult>(dryRun, []));
+            JsonOutput.Write(console, new ActionJsonOutput<TResult>(dryRun, [], truncatedRepos));
         }
         else
         {

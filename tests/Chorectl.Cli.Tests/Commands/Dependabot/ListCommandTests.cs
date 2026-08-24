@@ -173,7 +173,7 @@ public class ListCommandTests
     }
 
     [Fact]
-    public async Task RunAsync_WithJson_WhenVulnerabilityAlertsAreTruncated_SuppressesTheWarning()
+    public async Task RunAsync_WithJson_WhenVulnerabilityAlertsAreTruncated_ReportsItInTheJsonPayloadInsteadOfTheConsoleWarning()
     {
         var console = new TestConsole();
         var restClient = new RestClient(new FakeRepositorySource(
@@ -185,6 +185,23 @@ public class ListCommandTests
         await command.RunAsync(Settings(json: true));
 
         Assert.DoesNotContain("Warning:", console.Output);
+        Assert.Contains("\"reposWithTruncatedSecurityAlerts\": [", console.Output);
+        Assert.Contains("\"sample-repo\"", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithJson_WhenVulnerabilityAlertsAreNotTruncated_ReportsAnEmptyList()
+    {
+        var console = new TestConsole();
+        var restClient = new RestClient(new FakeRepositorySource(
+            new RepositoryInfo("octocat", "sample-repo", IsArchived: false, IsFork: false)));
+        var handler = new FakeHttpMessageHandler(SingleNodeResponse());
+        var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
+        var command = new ListCommand(restClient, graphQlClient, console);
+
+        await command.RunAsync(Settings(json: true));
+
+        Assert.Contains("\"reposWithTruncatedSecurityAlerts\": []", console.Output);
     }
 
     [Fact]

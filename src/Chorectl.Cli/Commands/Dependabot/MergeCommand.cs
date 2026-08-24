@@ -41,13 +41,13 @@ public sealed class MergeCommand(
 
     public async Task<int> RunAsync(Settings settings, CancellationToken cancellationToken = default)
     {
-        var (prs, owners) = await DependabotActionSupport.FetchCandidatesAsync(restClient, graphQlClient, console, settings, cancellationToken);
+        var (prs, owners, truncatedRepos) = await DependabotActionSupport.FetchCandidatesAsync(restClient, graphQlClient, console, settings, cancellationToken);
 
         var ready = prs.Where(Classifier.IsReadyToMerge).OrderBy(p => p.Repo).ThenBy(p => p.Number).ToList();
 
         if (ready.Count == 0)
         {
-            return DependabotActionSupport.ReportNothingToDo<MergeResult>(console, settings.Json, settings.DryRun, "No Dependabot PRs are ready to merge.");
+            return DependabotActionSupport.ReportNothingToDo<MergeResult>(console, settings.Json, settings.DryRun, "No Dependabot PRs are ready to merge.", truncatedRepos);
         }
 
         // --json can't render an interactive prompt, so it implies --yes for action commands.
@@ -57,7 +57,7 @@ public sealed class MergeCommand(
 
         if (selected.Count == 0)
         {
-            return DependabotActionSupport.ReportNothingToDo<MergeResult>(console, settings.Json, settings.DryRun, "No PRs selected. Nothing merged.");
+            return DependabotActionSupport.ReportNothingToDo<MergeResult>(console, settings.Json, settings.DryRun, "No PRs selected. Nothing merged.", truncatedRepos);
         }
 
         if (!settings.Json)
@@ -81,7 +81,7 @@ public sealed class MergeCommand(
 
         if (settings.Json)
         {
-            JsonOutput.Write(console, new ActionJsonOutput<MergeResult>(settings.DryRun, results));
+            JsonOutput.Write(console, new ActionJsonOutput<MergeResult>(settings.DryRun, results, truncatedRepos));
         }
         else
         {

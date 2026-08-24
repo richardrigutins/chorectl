@@ -36,7 +36,7 @@ public sealed class RebaseCommand(
 
     public async Task<int> RunAsync(Settings settings, CancellationToken cancellationToken = default)
     {
-        var (prs, owners) = await DependabotActionSupport.FetchCandidatesAsync(restClient, graphQlClient, console, settings, cancellationToken);
+        var (prs, owners, truncatedRepos) = await DependabotActionSupport.FetchCandidatesAsync(restClient, graphQlClient, console, settings, cancellationToken);
 
         var candidates = (settings.All ? prs : prs.Where(Classifier.NeedsRebase))
             .OrderBy(p => p.Repo).ThenBy(p => p.Number).ToList();
@@ -44,7 +44,7 @@ public sealed class RebaseCommand(
         if (candidates.Count == 0)
         {
             return DependabotActionSupport.ReportNothingToDo<RebaseResult>(
-                console, settings.Json, settings.DryRun, settings.All ? "No open Dependabot PRs." : "No Dependabot PRs need a rebase.");
+                console, settings.Json, settings.DryRun, settings.All ? "No open Dependabot PRs." : "No Dependabot PRs need a rebase.", truncatedRepos);
         }
 
         // --json can't render an interactive prompt, so it implies --yes for action commands.
@@ -54,7 +54,7 @@ public sealed class RebaseCommand(
 
         if (selected.Count == 0)
         {
-            return DependabotActionSupport.ReportNothingToDo<RebaseResult>(console, settings.Json, settings.DryRun, "No PRs selected. Nothing requested.");
+            return DependabotActionSupport.ReportNothingToDo<RebaseResult>(console, settings.Json, settings.DryRun, "No PRs selected. Nothing requested.", truncatedRepos);
         }
 
         if (!settings.Json)
@@ -78,7 +78,7 @@ public sealed class RebaseCommand(
 
         if (settings.Json)
         {
-            JsonOutput.Write(console, new ActionJsonOutput<RebaseResult>(settings.DryRun, results));
+            JsonOutput.Write(console, new ActionJsonOutput<RebaseResult>(settings.DryRun, results, truncatedRepos));
         }
         else
         {

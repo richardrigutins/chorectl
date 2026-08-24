@@ -28,13 +28,13 @@ public sealed class ApproveCommand(
 
     public async Task<int> RunAsync(Settings settings, CancellationToken cancellationToken = default)
     {
-        var (prs, owners) = await DependabotActionSupport.FetchCandidatesAsync(restClient, graphQlClient, console, settings, cancellationToken);
+        var (prs, owners, truncatedRepos) = await DependabotActionSupport.FetchCandidatesAsync(restClient, graphQlClient, console, settings, cancellationToken);
 
         var needsApproval = prs.Where(Classifier.NeedsApproval).OrderBy(p => p.Repo).ThenBy(p => p.Number).ToList();
 
         if (needsApproval.Count == 0)
         {
-            return DependabotActionSupport.ReportNothingToDo<ApproveResult>(console, settings.Json, settings.DryRun, "No Dependabot PRs need approval.");
+            return DependabotActionSupport.ReportNothingToDo<ApproveResult>(console, settings.Json, settings.DryRun, "No Dependabot PRs need approval.", truncatedRepos);
         }
 
         // --json can't render an interactive prompt, so it implies --yes for action commands.
@@ -44,7 +44,7 @@ public sealed class ApproveCommand(
 
         if (selected.Count == 0)
         {
-            return DependabotActionSupport.ReportNothingToDo<ApproveResult>(console, settings.Json, settings.DryRun, "No PRs selected. Nothing approved.");
+            return DependabotActionSupport.ReportNothingToDo<ApproveResult>(console, settings.Json, settings.DryRun, "No PRs selected. Nothing approved.", truncatedRepos);
         }
 
         if (!settings.Json)
@@ -68,7 +68,7 @@ public sealed class ApproveCommand(
 
         if (settings.Json)
         {
-            JsonOutput.Write(console, new ActionJsonOutput<ApproveResult>(settings.DryRun, results));
+            JsonOutput.Write(console, new ActionJsonOutput<ApproveResult>(settings.DryRun, results, truncatedRepos));
         }
         else
         {

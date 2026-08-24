@@ -891,6 +891,19 @@ public class MergeCommandTests
     }
 
     [Fact]
+    public async Task RunAsync_WithJson_WhenVulnerabilityAlertsAreTruncated_IncludesReposInJsonOutput()
+    {
+        var merger = new FakePullRequestMerger();
+        var (command, console) = CreateCommand(merger, EmptySearchResponseWithTruncatedSecurityAlerts());
+
+        var exitCode = await command.RunAsync(Settings(json: true));
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("\"reposWithTruncatedSecurityAlerts\": [", console.Output);
+        Assert.Contains("\"sample-repo\"", console.Output);
+    }
+
+    [Fact]
     public async Task RunAsync_WithNoOverride_UsesThePollIntervalAndTimeoutFromTheInjectedConfig()
     {
         var merger = new FakePullRequestMerger { FailForPrNumbers = { 1 } };
@@ -954,6 +967,24 @@ public class MergeCommandTests
             "search": {
               "pageInfo": { "hasNextPage": false, "endCursor": null },
               "nodes": [ {{string.Join(",", nodes)}} ]
+            }
+          }
+        }
+        """;
+
+    private static string EmptySearchResponseWithTruncatedSecurityAlerts() => $$"""
+        {
+          "data": {
+            "search": {
+              "pageInfo": { "hasNextPage": false, "endCursor": null },
+              "nodes": []
+            },
+            "repo0": {
+              "name": "sample-repo",
+              "vulnerabilityAlerts": {
+                "pageInfo": { "hasNextPage": true },
+                "nodes": []
+              }
             }
           }
         }
