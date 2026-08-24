@@ -138,6 +138,12 @@ public sealed class MergeCommand(
             // Waiting won't fix a permission problem - skip immediately, no poll (AC-12.2).
             return new MergeResult(refetched, MergeOutcome.Failed, $"insufficient permission to merge - {ex.Message}");
         }
+        catch (GitHubRateLimitException)
+        {
+            // Distinct from GitHubAuthException - not a permission problem, and not the tool's
+            // fault either. Backoff-and-retry is Phase 3 (US-11); for now, report it accurately.
+            return new MergeResult(refetched, MergeOutcome.Failed, "rate limited by GitHub - try again shortly");
+        }
         catch (Exception ex)
         {
             // Not a per-PR condition but a likely tool bug (404, 422, unrecognized response) -
@@ -192,6 +198,10 @@ public sealed class MergeCommand(
                 catch (GitHubAuthException ex)
                 {
                     return new MergeResult(current, MergeOutcome.Failed, $"insufficient permission to merge - {ex.Message}");
+                }
+                catch (GitHubRateLimitException)
+                {
+                    return new MergeResult(current, MergeOutcome.Failed, "rate limited by GitHub - try again shortly");
                 }
                 catch (Exception ex)
                 {

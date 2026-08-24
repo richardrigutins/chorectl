@@ -159,6 +159,22 @@ public class ApproveCommandTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenApproveFailsWithRateLimit_ReportsFailureWithoutInsufficientPermissionMessage()
+    {
+        var approver = new FakePullRequestApprover { FailWithRateLimitErrorForPrNumbers = { 1 } };
+        var (command, console) = CreateCommand(
+            approver,
+            SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED")));
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        var exitCode = await command.RunAsync(Settings());
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("failed — rate limited by GitHub", console.Output);
+        Assert.DoesNotContain("insufficient permission", console.Output);
+    }
+
+    [Fact]
     public async Task RunAsync_WhenApproveFailsWithUnrecognizedError_SkipsWithRawErrorSurfaced()
     {
         var approver = new FakePullRequestApprover

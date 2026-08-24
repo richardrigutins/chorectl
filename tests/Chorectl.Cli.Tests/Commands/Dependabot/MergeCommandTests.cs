@@ -460,6 +460,34 @@ public class MergeCommandTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenMergeFailsWithRateLimit_SkipsImmediatelyWithoutPollingAndDoesNotReportInsufficientPermission()
+    {
+        var merger = new FakePullRequestMerger { FailWithRateLimitErrorForPrNumbers = { 1 } };
+        var waits = new List<TimeSpan>();
+        var (command, console) = CreateCommand(
+            merger,
+            [
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1"),
+            ],
+            delay: (wait, _) =>
+            {
+                waits.Add(wait);
+                return Task.CompletedTask;
+            });
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        var exitCode = await command.RunAsync(Settings());
+
+        Assert.Equal(1, exitCode);
+        var call = Assert.Single(merger.MergeCalls);
+        Assert.Equal(1, call.Pr.Number);
+        Assert.Empty(waits);
+        Assert.Contains("failed — rate limited by GitHub", console.Output);
+        Assert.DoesNotContain("insufficient permission", console.Output);
+    }
+
+    [Fact]
     public async Task RunAsync_WhenMergeFailsWithUnrecognizedError_SkipsImmediatelyWithRawErrorSurfaced()
     {
         var merger = new FakePullRequestMerger
@@ -510,6 +538,30 @@ public class MergeCommandTests
         Assert.Equal(1, exitCode);
         Assert.Equal([1, 1], merger.MergeCalls.Select(c => c.Pr.Number));
         Assert.Contains("failed — insufficient permission to merge", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenPollRetryFailsWithRateLimit_StopsPollingImmediatelyWithoutReportingInsufficientPermission()
+    {
+        var merger = new FakePullRequestMerger { FailPollRetryWithRateLimitErrorForPrNumbers = { 1 } };
+        var (command, console) = CreateCommand(
+            merger,
+            [
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "CLEAN"),
+            ],
+            delay: NoOpDelay,
+            pollInterval: TimeSpan.FromSeconds(1),
+            pollTimeout: TimeSpan.FromSeconds(10));
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        var exitCode = await command.RunAsync(Settings());
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal([1, 1], merger.MergeCalls.Select(c => c.Pr.Number));
+        Assert.Contains("failed — rate limited by GitHub", console.Output);
+        Assert.DoesNotContain("insufficient permission", console.Output);
     }
 
     [Fact]

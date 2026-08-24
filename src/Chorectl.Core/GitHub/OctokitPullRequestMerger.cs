@@ -7,8 +7,11 @@ namespace Chorectl.Core.GitHub;
 /// Merges a Dependabot pull request via the GitHub REST API (Octokit.NET). Translates Octokit's
 /// exception types into the domain-specific ones <c>MergeCommand</c> classifies on: a 405 or 409
 /// (the head branch changed underneath the request) means "not mergeable yet" and is retryable;
-/// a 403 means insufficient permission. Anything else (404, 422, ...) is a likely tool bug and
-/// propagates as-is, with its raw message surfaced rather than folded into either of those.
+/// a plain 403 means insufficient permission. A rate-limit response is also a 403 in Octokit's own
+/// hierarchy (<c>RateLimitExceededException</c> subclasses <c>ForbiddenException</c>), so it's
+/// caught first and kept distinct from a permission problem. Anything else (404, 422, ...) is a
+/// likely tool bug and propagates as-is, with its raw message surfaced rather than folded into any
+/// of the above.
 /// </summary>
 /// <param name="mergeMethod">
 /// The configured <c>merge_method</c> value ("squash", "merge", or "rebase" - the only values
@@ -26,6 +29,10 @@ public sealed class OctokitPullRequestMerger(IGitHubClient client, string mergeM
         catch (Exception ex) when (ex is PullRequestNotMergeableException or PullRequestMismatchException)
         {
             throw new MergeNotReadyException(ex.Message);
+        }
+        catch (RateLimitExceededException ex)
+        {
+            throw new GitHubRateLimitException(ex.Message);
         }
         catch (ForbiddenException ex)
         {

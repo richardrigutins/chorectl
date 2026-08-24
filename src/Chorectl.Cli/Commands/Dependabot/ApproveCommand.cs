@@ -105,6 +105,10 @@ public sealed class ApproveCommand(
         {
             return new ApproveResult(pr, ApproveOutcome.Failed, $"insufficient permission to review - {ex.Message}");
         }
+        catch (GitHubRateLimitException)
+        {
+            return new ApproveResult(pr, ApproveOutcome.Failed, "rate limited by GitHub - try again shortly");
+        }
         catch (Exception ex)
         {
             return new ApproveResult(pr, ApproveOutcome.Failed, $"unexpected error, likely a tool bug - {ex.Message}");

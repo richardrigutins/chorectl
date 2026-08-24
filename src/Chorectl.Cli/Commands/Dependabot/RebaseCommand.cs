@@ -115,6 +115,10 @@ public sealed class RebaseCommand(
         {
             return new RebaseResult(pr, RebaseOutcome.Failed, $"insufficient permission to comment - {ex.Message}");
         }
+        catch (GitHubRateLimitException)
+        {
+            return new RebaseResult(pr, RebaseOutcome.Failed, "rate limited by GitHub - try again shortly");
+        }
         catch (Exception ex)
         {
             return new RebaseResult(pr, RebaseOutcome.Failed, $"unexpected error, likely a tool bug - {ex.Message}");

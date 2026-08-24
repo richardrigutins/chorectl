@@ -321,6 +321,22 @@ public class RebaseCommandTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenCommentFailsWithRateLimit_ReportsFailureWithoutInsufficientPermissionMessage()
+    {
+        var commenter = new FakePullRequestCommenter { FailWithRateLimitErrorForPrNumbers = { 1 } };
+        var (command, console) = CreateCommand(
+            commenter,
+            SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")));
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        var exitCode = await command.RunAsync(Settings());
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("failed — rate limited by GitHub", console.Output);
+        Assert.DoesNotContain("insufficient permission", console.Output);
+    }
+
+    [Fact]
     public async Task RunAsync_WhenCommentFailsWithUnrecognizedError_SkipsWithRawErrorSurfaced()
     {
         var commenter = new FakePullRequestCommenter
