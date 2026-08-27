@@ -16,7 +16,7 @@ public static class ProgressDisplay
 
     public static void RenderRepoHeader(IAnsiConsole console, string repo) => console.MarkupLine(repo.EscapeMarkup());
 
-    public static void RenderResult(IAnsiConsole console, MergeResult result)
+    public static void RenderResult(IAnsiConsole console, BatchResult<MergeOutcome> result)
     {
         var line = $"#{result.Pr.Number}  {Describe(result.Pr)}";
         var reason = result.Reason?.EscapeMarkup();
@@ -42,11 +42,11 @@ public static class ProgressDisplay
     /// so a banner that appears or disappears mid-poll won't update the label. Display-only, so
     /// that's an acceptable simplification.
     /// </summary>
-    public static Task<MergeResult> RunLivePollAsync(
+    public static Task<BatchResult<MergeOutcome>> RunLivePollAsync(
         IAnsiConsole console,
         DependabotPr pr,
         TimeSpan timeout,
-        Func<Action<TimeSpan>, Task<MergeResult>> poll)
+        Func<Action<TimeSpan>, Task<BatchResult<MergeOutcome>>> poll)
     {
         var label = Classifier.HasRebaseBanner(pr) ? "rebase in progress, polling" : "polling";
         var description = Describe(pr);
@@ -58,7 +58,7 @@ public static class ProgressDisplay
             ctx => poll(remaining => ctx.Status(Frame($"— {Math.Max(0, remaining.TotalSeconds):0}s left"))));
     }
 
-    public static void RenderSummary(IAnsiConsole console, IReadOnlyList<MergeResult> results, bool dryRun = false)
+    public static void RenderSummary(IAnsiConsole console, IReadOnlyList<BatchResult<MergeOutcome>> results, bool dryRun = false)
     {
         var merged = results.Count(r => r.Outcome == MergeOutcome.Merged);
         var skipped = results.Count(r => r.Outcome == MergeOutcome.Skipped);
@@ -83,7 +83,7 @@ public static class ProgressDisplay
         console.WriteLine();
     }
 
-    public static void RenderRebaseResult(IAnsiConsole console, RebaseResult result)
+    public static void RenderRebaseResult(IAnsiConsole console, BatchResult<RebaseOutcome> result)
     {
         var line = $"#{result.Pr.Number}  {Describe(result.Pr)}";
         var reason = result.Reason?.EscapeMarkup();
@@ -97,7 +97,7 @@ public static class ProgressDisplay
         });
     }
 
-    public static void RenderRebaseSummary(IAnsiConsole console, IReadOnlyList<RebaseResult> results, bool dryRun = false)
+    public static void RenderRebaseSummary(IAnsiConsole console, IReadOnlyList<BatchResult<RebaseOutcome>> results, bool dryRun = false)
     {
         var requested = results.Count(r => r.Outcome == RebaseOutcome.Requested);
         var skipped = results.Count(r => r.Outcome == RebaseOutcome.Skipped);
@@ -114,7 +114,7 @@ public static class ProgressDisplay
         console.WriteLine();
     }
 
-    public static void RenderApproveResult(IAnsiConsole console, ApproveResult result)
+    public static void RenderApproveResult(IAnsiConsole console, BatchResult<ApproveOutcome> result)
     {
         var line = $"#{result.Pr.Number}  {Describe(result.Pr)}";
         var reason = result.Reason?.EscapeMarkup();
@@ -128,7 +128,7 @@ public static class ProgressDisplay
         });
     }
 
-    public static void RenderApproveSummary(IAnsiConsole console, IReadOnlyList<ApproveResult> results, bool dryRun = false)
+    public static void RenderApproveSummary(IAnsiConsole console, IReadOnlyList<BatchResult<ApproveOutcome>> results, bool dryRun = false)
     {
         var approved = results.Count(r => r.Outcome == ApproveOutcome.Approved);
         var skipped = results.Count(r => r.Outcome == ApproveOutcome.Skipped);
