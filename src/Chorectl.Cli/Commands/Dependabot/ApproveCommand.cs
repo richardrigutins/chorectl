@@ -34,7 +34,7 @@ public sealed class ApproveCommand(
 
         if (needsApproval.Count == 0)
         {
-            return DependabotActionSupport.ReportNothingToDo<ApproveResult>(console, settings.Json, settings.DryRun, "No Dependabot PRs need approval.", truncatedRepos);
+            return DependabotActionSupport.ReportNothingToDo<BatchResult<ApproveOutcome>>(console, settings.Json, settings.DryRun, "No Dependabot PRs need approval.", truncatedRepos);
         }
 
         // --json can't render an interactive prompt, so it implies --yes for action commands.
@@ -44,7 +44,7 @@ public sealed class ApproveCommand(
 
         if (selected.Count == 0)
         {
-            return DependabotActionSupport.ReportNothingToDo<ApproveResult>(console, settings.Json, settings.DryRun, "No PRs selected. Nothing approved.", truncatedRepos);
+            return DependabotActionSupport.ReportNothingToDo<BatchResult<ApproveOutcome>>(console, settings.Json, settings.DryRun, "No PRs selected. Nothing approved.", truncatedRepos);
         }
 
         if (!settings.Json)
@@ -68,7 +68,7 @@ public sealed class ApproveCommand(
 
         if (settings.Json)
         {
-            JsonOutput.Write(console, new ActionJsonOutput<ApproveResult>(settings.DryRun, results, truncatedRepos));
+            JsonOutput.Write(console, new ActionJsonOutput<BatchResult<ApproveOutcome>>(settings.DryRun, results, truncatedRepos));
         }
         else
         {
@@ -78,38 +78,38 @@ public sealed class ApproveCommand(
         return results.Any(r => r.Outcome == ApproveOutcome.Failed) ? 1 : 0;
     }
 
-    private async Task<ApproveResult> ApproveOneAsync(string owner, DependabotPr pr, bool dryRun, CancellationToken cancellationToken)
+    private async Task<BatchResult<ApproveOutcome>> ApproveOneAsync(string owner, DependabotPr pr, bool dryRun, CancellationToken cancellationToken)
     {
         // Dependabot can close or recreate a PR between list time and act time - re-verify it's
         // still the same open PR immediately before submitting a review on it.
         var refetched = await graphQlClient.RefetchAsync(owner, pr, cancellationToken);
         if (refetched is null)
         {
-            return new ApproveResult(pr, ApproveOutcome.Skipped, "no longer open");
+            return new BatchResult<ApproveOutcome>(pr, ApproveOutcome.Skipped, "no longer open");
         }
 
         // Dry run stops here - the PR would be approved, but no review is submitted (AC-08.1).
         if (dryRun)
         {
-            return new ApproveResult(refetched, ApproveOutcome.Approved);
+            return new BatchResult<ApproveOutcome>(refetched, ApproveOutcome.Approved);
         }
 
         try
         {
             await approver.ApproveAsync(owner, refetched, cancellationToken);
-            return new ApproveResult(refetched, ApproveOutcome.Approved);
+            return new BatchResult<ApproveOutcome>(refetched, ApproveOutcome.Approved);
         }
         catch (GitHubAuthException ex)
         {
-            return new ApproveResult(refetched, ApproveOutcome.Failed, $"insufficient permission to review - {ex.Message}");
+            return new BatchResult<ApproveOutcome>(refetched, ApproveOutcome.Failed, $"insufficient permission to review - {ex.Message}");
         }
         catch (GitHubRateLimitException)
         {
-            return new ApproveResult(refetched, ApproveOutcome.Failed, "rate limited by GitHub - try again shortly");
+            return new BatchResult<ApproveOutcome>(refetched, ApproveOutcome.Failed, "rate limited by GitHub - try again shortly");
         }
         catch (Exception ex)
         {
-            return new ApproveResult(refetched, ApproveOutcome.Failed, $"unexpected error, likely a tool bug - {ex.Message}");
+            return new BatchResult<ApproveOutcome>(refetched, ApproveOutcome.Failed, $"unexpected error, likely a tool bug - {ex.Message}");
         }
     }
 

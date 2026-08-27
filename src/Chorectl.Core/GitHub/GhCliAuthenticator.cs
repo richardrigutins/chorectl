@@ -12,7 +12,7 @@ public sealed partial class GhCliAuthenticator(IProcessRunner processRunner) : I
     private static readonly Version MinimumGhVersion = new(2, 5, 0);
 
     /// <summary>
-    /// Runs <see cref="CheckPrerequisites"/> and retrieves the current GitHub token from <c>gh auth token</c>.
+    /// Retrieves the current GitHub token from <c>gh auth token</c>.
     /// </summary>
     /// <exception cref="GitHubAuthException">gh is missing, too old, unauthenticated, or the token couldn't be read.</exception>
     public string GetToken()
@@ -29,11 +29,7 @@ public sealed partial class GhCliAuthenticator(IProcessRunner processRunner) : I
         return result.StandardOutput;
     }
 
-    /// <summary>
-    /// Verifies gh is installed, meets the minimum version, and is authenticated.
-    /// </summary>
-    /// <exception cref="GitHubAuthException">gh is missing, too old, or not authenticated.</exception>
-    public void CheckPrerequisites()
+    private void CheckPrerequisites()
     {
         CheckMinimumVersion(RunGhVersion());
         CheckAuthenticated();

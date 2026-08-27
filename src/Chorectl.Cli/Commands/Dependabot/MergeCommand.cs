@@ -31,10 +31,12 @@ public sealed class MergeCommand(
 {
     public sealed class Settings : ActionSettings;
 
+    private static readonly ChorectlConfig DefaultConfig = new();
+
     private readonly Func<TimeSpan, CancellationToken, Task> delay = delay ?? Task.Delay;
-    private readonly TimeSpan mergePollInterval = TimeSpan.FromSeconds((config ?? new ChorectlConfig()).MergePollIntervalSeconds);
-    private readonly TimeSpan mergePollTimeout = TimeSpan.FromSeconds((config ?? new ChorectlConfig()).MergePollTimeoutSeconds);
-    private readonly DefaultSelectConfig defaultSelect = (config ?? new ChorectlConfig()).DefaultSelect;
+    private readonly TimeSpan mergePollInterval = TimeSpan.FromSeconds((config ?? DefaultConfig).MergePollIntervalSeconds);
+    private readonly TimeSpan mergePollTimeout = TimeSpan.FromSeconds((config ?? DefaultConfig).MergePollTimeoutSeconds);
+    private readonly DefaultSelectConfig defaultSelect = (config ?? DefaultConfig).DefaultSelect;
 
     protected override Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken) =>
         RunAsync(settings, cancellationToken);
@@ -47,7 +49,7 @@ public sealed class MergeCommand(
 
         if (ready.Count == 0)
         {
-            return DependabotActionSupport.ReportNothingToDo<MergeResult>(console, settings.Json, settings.DryRun, "No Dependabot PRs are ready to merge.", truncatedRepos);
+            return DependabotActionSupport.ReportNothingToDo<BatchResult<MergeOutcome>>(console, settings.Json, settings.DryRun, "No Dependabot PRs are ready to merge.", truncatedRepos);
         }
 
         // --json can't render an interactive prompt, so it implies --yes for action commands.
@@ -57,7 +59,7 @@ public sealed class MergeCommand(
 
         if (selected.Count == 0)
         {
-            return DependabotActionSupport.ReportNothingToDo<MergeResult>(console, settings.Json, settings.DryRun, "No PRs selected. Nothing merged.", truncatedRepos);
+            return DependabotActionSupport.ReportNothingToDo<BatchResult<MergeOutcome>>(console, settings.Json, settings.DryRun, "No PRs selected. Nothing merged.", truncatedRepos);
         }
 
         if (!settings.Json)
@@ -81,7 +83,7 @@ public sealed class MergeCommand(
 
         if (settings.Json)
         {
-            JsonOutput.Write(console, new ActionJsonOutput<MergeResult>(settings.DryRun, results, truncatedRepos));
+            JsonOutput.Write(console, new ActionJsonOutput<BatchResult<MergeOutcome>>(settings.DryRun, results, truncatedRepos));
         }
         else
         {
@@ -91,26 +93,26 @@ public sealed class MergeCommand(
         return results.Any(r => r.Outcome == MergeOutcome.Failed) ? 1 : 0;
     }
 
-    private async Task<MergeResult> MergeOneAsync(string owner, DependabotPr pr, bool dryRun, bool json, bool verbose, CancellationToken cancellationToken)
+    private async Task<BatchResult<MergeOutcome>> MergeOneAsync(string owner, DependabotPr pr, bool dryRun, bool json, bool verbose, CancellationToken cancellationToken)
     {
         VerboseLog.Write(console, verbose, json, $"Refetching state for {owner}/{pr.Repo}#{pr.Number}");
         var refetched = await graphQlClient.RefetchAsync(owner, pr, cancellationToken);
         if (refetched is null)
         {
-            return new MergeResult(pr, MergeOutcome.Skipped, "no longer open");
+            return new BatchResult<MergeOutcome>(pr, MergeOutcome.Skipped, "no longer open");
         }
 
         // DIRTY (an actual conflict) is the only merge-state value that disqualifies a PR here -
         // BEHIND is attempted directly, no wait up front (AC-03.2, AC-03.3).
         if (!Classifier.IsReadyToMerge(refetched))
         {
-            return new MergeResult(refetched, MergeOutcome.Skipped, DescribeNotReady(refetched));
+            return new BatchResult<MergeOutcome>(refetched, MergeOutcome.Skipped, DescribeNotReady(refetched));
         }
 
         // Dry run stops here - the PR would be merged, but no mutation is issued (AC-08.1).
         if (dryRun)
         {
-            return new MergeResult(refetched, MergeOutcome.Merged);
+            return new BatchResult<MergeOutcome>(refetched, MergeOutcome.Merged);
         }
 
         // The only retryable failure is MergeNotReadyException (US-12/AC-12.1) - waiting won't
@@ -125,14 +127,14 @@ public sealed class MergeCommand(
     /// <see langword="null"/> only for <see cref="MergeNotReadyException"/> - the one retryable
     /// failure - since what "retryable" means differs by call site (enter the poll loop for the
     /// first attempt; keep looping for a poll-loop retry). Every other outcome, success included,
-    /// is a terminal <see cref="MergeResult"/>.
+    /// is a terminal <see cref="BatchResult{TOutcome}"/>.
     /// </summary>
-    private async Task<MergeResult?> TryMergeAsync(string owner, DependabotPr pr, CancellationToken cancellationToken)
+    private async Task<BatchResult<MergeOutcome>?> TryMergeAsync(string owner, DependabotPr pr, CancellationToken cancellationToken)
     {
         try
         {
             await merger.MergeAsync(owner, pr, cancellationToken);
-            return new MergeResult(pr, MergeOutcome.Merged);
+            return new BatchResult<MergeOutcome>(pr, MergeOutcome.Merged);
         }
         catch (MergeNotReadyException)
         {
@@ -140,26 +142,26 @@ public sealed class MergeCommand(
         }
         catch (GitHubAuthException ex)
         {
-            return new MergeResult(pr, MergeOutcome.Failed, $"insufficient permission to merge - {ex.Message}");
+            return new BatchResult<MergeOutcome>(pr, MergeOutcome.Failed, $"insufficient permission to merge - {ex.Message}");
         }
         catch (GitHubRateLimitException)
         {
             // Distinct from GitHubAuthException - not a permission problem, and not the tool's
             // fault either. Backoff-and-retry is Phase 3 (US-11); for now, report it accurately.
-            return new MergeResult(pr, MergeOutcome.Failed, "rate limited by GitHub - try again shortly");
+            return new BatchResult<MergeOutcome>(pr, MergeOutcome.Failed, "rate limited by GitHub - try again shortly");
         }
         catch (Exception ex)
         {
-            return new MergeResult(pr, MergeOutcome.Failed, $"unexpected error, likely a tool bug - {ex.Message}");
+            return new BatchResult<MergeOutcome>(pr, MergeOutcome.Failed, $"unexpected error, likely a tool bug - {ex.Message}");
         }
     }
 
-    private Task<MergeResult> PollAndRetryMergeAsync(string owner, DependabotPr pr, bool json, CancellationToken cancellationToken) =>
+    private Task<BatchResult<MergeOutcome>> PollAndRetryMergeAsync(string owner, DependabotPr pr, bool json, CancellationToken cancellationToken) =>
         json
             ? PollLoopAsync(owner, pr, null, cancellationToken)
             : ProgressDisplay.RunLivePollAsync(console, pr, mergePollTimeout, onTick => PollLoopAsync(owner, pr, onTick, cancellationToken));
 
-    private async Task<MergeResult> PollLoopAsync(string owner, DependabotPr pr, Action<TimeSpan>? onTick, CancellationToken cancellationToken)
+    private async Task<BatchResult<MergeOutcome>> PollLoopAsync(string owner, DependabotPr pr, Action<TimeSpan>? onTick, CancellationToken cancellationToken)
     {
         var current = pr;
         var elapsed = TimeSpan.Zero;
@@ -179,7 +181,7 @@ public sealed class MergeCommand(
             var refetched = await graphQlClient.RefetchAsync(owner, current, cancellationToken);
             if (refetched is null)
             {
-                return new MergeResult(current, MergeOutcome.Skipped, "no longer open");
+                return new BatchResult<MergeOutcome>(current, MergeOutcome.Skipped, "no longer open");
             }
 
             current = refetched;
@@ -187,7 +189,7 @@ public sealed class MergeCommand(
             // Stop polling immediately rather than running out the full timeout (AC-03.5).
             if (current.MergeStateStatus == MergeStateStatuses.Dirty)
             {
-                return new MergeResult(current, MergeOutcome.Skipped, "became conflicting while waiting");
+                return new BatchResult<MergeOutcome>(current, MergeOutcome.Skipped, "became conflicting while waiting");
             }
 
             // Retry once no longer behind *and* CI is passing on the current head - not just
@@ -204,7 +206,7 @@ public sealed class MergeCommand(
             }
         }
 
-        return new MergeResult(current, MergeOutcome.Skipped, $"still not mergeable after {mergePollTimeout.TotalSeconds:0}s");
+        return new BatchResult<MergeOutcome>(current, MergeOutcome.Skipped, $"still not mergeable after {mergePollTimeout.TotalSeconds:0}s");
     }
 
     private static string DescribeOutcome(MergeOutcome outcome) => outcome switch

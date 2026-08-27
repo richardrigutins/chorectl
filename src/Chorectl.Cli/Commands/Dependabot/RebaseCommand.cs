@@ -43,7 +43,7 @@ public sealed class RebaseCommand(
 
         if (candidates.Count == 0)
         {
-            return DependabotActionSupport.ReportNothingToDo<RebaseResult>(
+            return DependabotActionSupport.ReportNothingToDo<BatchResult<RebaseOutcome>>(
                 console, settings.Json, settings.DryRun, settings.All ? "No open Dependabot PRs." : "No Dependabot PRs need a rebase.", truncatedRepos);
         }
 
@@ -54,7 +54,7 @@ public sealed class RebaseCommand(
 
         if (selected.Count == 0)
         {
-            return DependabotActionSupport.ReportNothingToDo<RebaseResult>(console, settings.Json, settings.DryRun, "No PRs selected. Nothing requested.", truncatedRepos);
+            return DependabotActionSupport.ReportNothingToDo<BatchResult<RebaseOutcome>>(console, settings.Json, settings.DryRun, "No PRs selected. Nothing requested.", truncatedRepos);
         }
 
         if (!settings.Json)
@@ -78,7 +78,7 @@ public sealed class RebaseCommand(
 
         if (settings.Json)
         {
-            JsonOutput.Write(console, new ActionJsonOutput<RebaseResult>(settings.DryRun, results, truncatedRepos));
+            JsonOutput.Write(console, new ActionJsonOutput<BatchResult<RebaseOutcome>>(settings.DryRun, results, truncatedRepos));
         }
         else
         {
@@ -88,38 +88,38 @@ public sealed class RebaseCommand(
         return results.Any(r => r.Outcome == RebaseOutcome.Failed) ? 1 : 0;
     }
 
-    private async Task<RebaseResult> RequestOneAsync(string owner, DependabotPr pr, bool dryRun, CancellationToken cancellationToken)
+    private async Task<BatchResult<RebaseOutcome>> RequestOneAsync(string owner, DependabotPr pr, bool dryRun, CancellationToken cancellationToken)
     {
         // Dependabot can close or recreate a PR between list time and act time - re-verify it's
         // still the same open PR immediately before commenting on it.
         var refetched = await graphQlClient.RefetchAsync(owner, pr, cancellationToken);
         if (refetched is null)
         {
-            return new RebaseResult(pr, RebaseOutcome.Skipped, "no longer open");
+            return new BatchResult<RebaseOutcome>(pr, RebaseOutcome.Skipped, "no longer open");
         }
 
         // Dry run stops here - the rebase would be requested, but no comment is posted (AC-08.1).
         if (dryRun)
         {
-            return new RebaseResult(refetched, RebaseOutcome.Requested);
+            return new BatchResult<RebaseOutcome>(refetched, RebaseOutcome.Requested);
         }
 
         try
         {
             await commenter.CommentAsync(owner, refetched, RebaseComment, cancellationToken);
-            return new RebaseResult(refetched, RebaseOutcome.Requested);
+            return new BatchResult<RebaseOutcome>(refetched, RebaseOutcome.Requested);
         }
         catch (GitHubAuthException ex)
         {
-            return new RebaseResult(refetched, RebaseOutcome.Failed, $"insufficient permission to comment - {ex.Message}");
+            return new BatchResult<RebaseOutcome>(refetched, RebaseOutcome.Failed, $"insufficient permission to comment - {ex.Message}");
         }
         catch (GitHubRateLimitException)
         {
-            return new RebaseResult(refetched, RebaseOutcome.Failed, "rate limited by GitHub - try again shortly");
+            return new BatchResult<RebaseOutcome>(refetched, RebaseOutcome.Failed, "rate limited by GitHub - try again shortly");
         }
         catch (Exception ex)
         {
-            return new RebaseResult(refetched, RebaseOutcome.Failed, $"unexpected error, likely a tool bug - {ex.Message}");
+            return new BatchResult<RebaseOutcome>(refetched, RebaseOutcome.Failed, $"unexpected error, likely a tool bug - {ex.Message}");
         }
     }
 

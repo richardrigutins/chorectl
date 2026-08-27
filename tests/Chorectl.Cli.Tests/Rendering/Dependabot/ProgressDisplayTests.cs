@@ -13,7 +13,7 @@ public class ProgressDisplayTests
         var pr = Pr(1);
 
         await ProgressDisplay.RunLivePollAsync(console, pr, TimeSpan.FromSeconds(120), _ =>
-            Task.FromResult(new MergeResult(pr, MergeOutcome.Merged)));
+            Task.FromResult(new BatchResult<MergeOutcome>(pr, MergeOutcome.Merged)));
 
         Assert.Contains("polling", console.Output);
         Assert.Contains("up to 120s", console.Output);
@@ -28,7 +28,7 @@ public class ProgressDisplayTests
         await ProgressDisplay.RunLivePollAsync(console, pr, TimeSpan.FromSeconds(120), onTick =>
         {
             onTick(TimeSpan.FromSeconds(45));
-            return Task.FromResult(new MergeResult(pr, MergeOutcome.Merged));
+            return Task.FromResult(new BatchResult<MergeOutcome>(pr, MergeOutcome.Merged));
         });
 
         Assert.Contains("45s left", console.Output);
@@ -44,7 +44,7 @@ public class ProgressDisplayTests
         await ProgressDisplay.RunLivePollAsync(console, pr, TimeSpan.FromSeconds(60), onTick =>
         {
             onTick(TimeSpan.FromSeconds(30));
-            return Task.FromResult(new MergeResult(pr, MergeOutcome.Merged));
+            return Task.FromResult(new BatchResult<MergeOutcome>(pr, MergeOutcome.Merged));
         });
 
         Assert.Contains("rebase in progress, polling", console.Output);
@@ -56,7 +56,7 @@ public class ProgressDisplayTests
     {
         var console = new TestConsole();
         var pr = Pr(1);
-        var expected = new MergeResult(pr, MergeOutcome.Skipped, "became conflicting while waiting");
+        var expected = new BatchResult<MergeOutcome>(pr, MergeOutcome.Skipped, "became conflicting while waiting");
 
         var result = await ProgressDisplay.RunLivePollAsync(console, pr, TimeSpan.FromSeconds(60), _ => Task.FromResult(expected));
 
