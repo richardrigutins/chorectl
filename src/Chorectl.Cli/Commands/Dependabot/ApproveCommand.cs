@@ -1,6 +1,7 @@
 using Chorectl.Cli.Rendering;
 using Chorectl.Cli.Rendering.Dependabot;
 using Chorectl.Core.Audit;
+using Chorectl.Core.Config;
 using Chorectl.Core.Domain.Dependabot;
 using Chorectl.Core.GitHub;
 using Spectre.Console;
@@ -14,14 +15,24 @@ namespace Chorectl.Cli.Commands.Dependabot;
 /// (Dependabot can close or recreate a PR between list time and act time). Repos where review
 /// isn't required at all never appear, since none of their PRs have <c>NeedsApproval</c> set.
 /// </summary>
+/// <param name="config">
+/// Supplies <c>default_select.*</c> (which bump levels/grouped PRs get pre-selected), same
+/// rules as <see cref="MergeCommand"/>. Defaults to a fresh <see cref="ChorectlConfig"/> when
+/// not injected, matching that type's own defaults.
+/// </param>
 public sealed class ApproveCommand(
     RestClient restClient,
     GraphQlClient graphQlClient,
     IPullRequestApprover approver,
     IAnsiConsole console,
-    IAuditLog auditLog) : AsyncCommand<ApproveCommand.Settings>
+    IAuditLog auditLog,
+    ChorectlConfig? config = null) : AsyncCommand<ApproveCommand.Settings>
 {
     public sealed class Settings : ActionSettings;
+
+    private static readonly ChorectlConfig DefaultConfig = new();
+
+    private readonly DefaultSelectConfig defaultSelect = (config ?? DefaultConfig).DefaultSelect;
 
     protected override Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken) =>
         RunAsync(settings, cancellationToken);
@@ -39,8 +50,8 @@ public sealed class ApproveCommand(
 
         // --json can't render an interactive prompt, so it implies --yes for action commands.
         var selected = settings.Yes || settings.Json
-            ? needsApproval
-            : SelectionScreens.PromptApprove(console, needsApproval);
+            ? needsApproval.Where(pr => Classifier.DefaultSelectedForApproval(pr, defaultSelect)).ToList()
+            : SelectionScreens.PromptApprove(console, needsApproval, defaultSelect);
 
         if (selected.Count == 0)
         {
