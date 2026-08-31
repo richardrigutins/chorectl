@@ -92,13 +92,14 @@ public class ClassifierTests
     }
 
     [Theory]
-    [InlineData(SemverLevel.Patch)]
-    [InlineData(SemverLevel.Minor)]
-    public void DefaultSelected_NeverSelectsSecurityUpdates_RegardlessOfSemverLevel(SemverLevel semverLevel)
+    [InlineData(SemverLevel.Patch, true)]
+    [InlineData(SemverLevel.Minor, true)]
+    [InlineData(SemverLevel.Major, false)]
+    public void DefaultSelected_SecurityUpdates_FollowTheSameSemverLevelRuleAsAnyOtherPr(SemverLevel semverLevel, bool expected)
     {
         var pr = CreatePr(semverLevel: semverLevel, isSecurityUpdate: true);
 
-        Assert.False(Classifier.DefaultSelected(pr, new DefaultSelectConfig()));
+        Assert.Equal(expected, Classifier.DefaultSelected(pr, new DefaultSelectConfig()));
     }
 
     [Fact]
@@ -142,11 +143,11 @@ public class ClassifierTests
     }
 
     [Fact]
-    public void DefaultSelected_NeverSelectsSecurityUpdates_EvenWithMajorEnabledInConfig()
+    public void DefaultSelected_WithMajorEnabledInConfig_SelectsMajorSecurityUpdatesToo()
     {
         var pr = CreatePr(semverLevel: SemverLevel.Major, isSecurityUpdate: true);
 
-        Assert.False(Classifier.DefaultSelected(pr, new DefaultSelectConfig { Major = true }));
+        Assert.True(Classifier.DefaultSelected(pr, new DefaultSelectConfig { Major = true }));
     }
 
     [Theory]
@@ -165,11 +166,11 @@ public class ClassifierTests
     }
 
     [Fact]
-    public void DefaultSelectedForApproval_NeverSelectsSecurityUpdates_EvenAtPatchLevel()
+    public void DefaultSelectedForApproval_SelectsSecurityUpdates_AtPatchLevel()
     {
         var pr = CreatePr(semverLevel: SemverLevel.Patch, isSecurityUpdate: true);
 
-        Assert.False(Classifier.DefaultSelectedForApproval(pr, new DefaultSelectConfig()));
+        Assert.True(Classifier.DefaultSelectedForApproval(pr, new DefaultSelectConfig()));
     }
 
     [Fact]
