@@ -31,27 +31,26 @@ public static class Classifier
     /// Whether a PR should be pre-selected on the merge screen, per <paramref name="defaultSelect"/>
     /// (the user's <c>default_select.*</c> config). An <see cref="SemverLevel.Unknown"/> bump is
     /// never pre-selected regardless of config - an unparseable version isn't a known risk level
-    /// the user can opt into, unlike major. Security updates are excluded regardless of semver
-    /// level or config too - they deserve a manual look even at patch level (there's no
-    /// <c>default_select.security</c> toggle by design).
+    /// the user can opt into, unlike major. A security update follows the same semver-level and
+    /// grouped rules as any other PR - it isn't force-excluded just for being one (there's no
+    /// <c>default_select.security</c> toggle; the badge is informational, not a selection gate).
     /// </summary>
     public static bool DefaultSelected(DependabotPr pr, DefaultSelectConfig defaultSelect) =>
         IsReadyToMerge(pr) && MatchesRiskTier(pr, defaultSelect);
 
     /// <summary>
     /// Whether a PR should be pre-selected on the approve screen, per <paramref name="defaultSelect"/>.
-    /// Applies the same risk-tier rules as <see cref="DefaultSelected"/> (semver level, grouped,
-    /// security) but without the <see cref="IsReadyToMerge"/> gate - every PR here already needs
-    /// approval (<see cref="ReviewStatus.ReviewRequired"/>), which <see cref="IsReadyToMerge"/>
-    /// would otherwise disqualify outright.
+    /// Applies the same risk-tier rules as <see cref="DefaultSelected"/> (semver level, grouped)
+    /// but without the <see cref="IsReadyToMerge"/> gate - every PR here already needs approval
+    /// (<see cref="ReviewStatus.ReviewRequired"/>), which <see cref="IsReadyToMerge"/> would
+    /// otherwise disqualify outright.
     /// </summary>
     public static bool DefaultSelectedForApproval(DependabotPr pr, DefaultSelectConfig defaultSelect) =>
         MatchesRiskTier(pr, defaultSelect);
 
     private static bool MatchesRiskTier(DependabotPr pr, DefaultSelectConfig defaultSelect) =>
         IsSemverLevelAllowed(pr.SemverLevel, defaultSelect)
-        && (defaultSelect.Grouped || !pr.IsGrouped)
-        && !pr.IsSecurityUpdate;
+        && (defaultSelect.Grouped || !pr.IsGrouped);
 
     private static bool IsSemverLevelAllowed(SemverLevel level, DefaultSelectConfig defaultSelect) => level switch
     {

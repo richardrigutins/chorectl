@@ -32,7 +32,7 @@ public class SelectionScreensTests
     }
 
     [Fact]
-    public void PromptMerge_WithSecurityUpdate_DoesNotPreSelectIt()
+    public void PromptMerge_WithSecurityUpdate_PreSelectsItLikeAnyOtherPatchBump()
     {
         var console = new TestConsole().Interactive();
         console.Input.PushKey(ConsoleKey.Enter);
@@ -40,7 +40,7 @@ public class SelectionScreensTests
 
         var selected = SelectionScreens.PromptMerge(console, [pr], new DefaultSelectConfig());
 
-        Assert.Empty(selected);
+        Assert.Single(selected);
     }
 
     [Fact]

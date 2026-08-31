@@ -4,9 +4,10 @@ namespace Chorectl.Cli.Rendering.Dependabot;
 
 /// <summary>
 /// Shared visual badges for PR properties that don't fit a dedicated table column - grouped and
-/// security updates - so the overview table and selection screens flag them consistently. Both
-/// are excluded from default selection regardless of semver level (see
-/// <see cref="Classifier.DefaultSelected"/>), so the badge is what tells the user why.
+/// security updates - so the overview table and selection screens flag them consistently. Grouped
+/// PRs are excluded from default selection regardless of semver level (see
+/// <see cref="Classifier.DefaultSelected"/>); the security badge is purely informational - a
+/// security update is otherwise selected the same as any other PR at its semver level.
 /// </summary>
 internal static class Badges
 {
