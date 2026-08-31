@@ -28,11 +28,12 @@ public static class SelectionScreens
             pr => Classifier.NeedsRebase(pr) && !Classifier.HasRebaseBanner(pr));
 
     /// <summary>
-    /// Prompts the user to select PRs to approve, grouped by repo. Every PR is pre-selected by
-    /// default - there's no risk-tier distinction for approval the way there is for merge.
+    /// Prompts the user to select PRs to approve, grouped by repo, with the same risk-tier
+    /// pre-selection rules as merge - patch/minor pre-selected, major and grouped PRs left
+    /// unchecked, per <paramref name="defaultSelect"/> (the user's <c>default_select.*</c> config).
     /// </summary>
-    public static IReadOnlyList<DependabotPr> PromptApprove(IAnsiConsole console, IReadOnlyList<DependabotPr> needsApprovalPrs) =>
-        Prompt(console, "Select PRs to approve [grey](space to toggle, enter to confirm)[/]", needsApprovalPrs, _ => true);
+    public static IReadOnlyList<DependabotPr> PromptApprove(IAnsiConsole console, IReadOnlyList<DependabotPr> needsApprovalPrs, DefaultSelectConfig defaultSelect) =>
+        Prompt(console, "Select PRs to approve [grey](space to toggle, enter to confirm)[/]", needsApprovalPrs, pr => Classifier.DefaultSelectedForApproval(pr, defaultSelect));
 
     /// <summary>
     /// A single row in the selection prompt: either a real PR or a repo group header. Using this

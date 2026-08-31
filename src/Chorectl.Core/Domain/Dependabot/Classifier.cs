@@ -36,8 +36,20 @@ public static class Classifier
     /// <c>default_select.security</c> toggle by design).
     /// </summary>
     public static bool DefaultSelected(DependabotPr pr, DefaultSelectConfig defaultSelect) =>
-        IsReadyToMerge(pr)
-        && IsSemverLevelAllowed(pr.SemverLevel, defaultSelect)
+        IsReadyToMerge(pr) && MatchesRiskTier(pr, defaultSelect);
+
+    /// <summary>
+    /// Whether a PR should be pre-selected on the approve screen, per <paramref name="defaultSelect"/>.
+    /// Applies the same risk-tier rules as <see cref="DefaultSelected"/> (semver level, grouped,
+    /// security) but without the <see cref="IsReadyToMerge"/> gate - every PR here already needs
+    /// approval (<see cref="ReviewStatus.ReviewRequired"/>), which <see cref="IsReadyToMerge"/>
+    /// would otherwise disqualify outright.
+    /// </summary>
+    public static bool DefaultSelectedForApproval(DependabotPr pr, DefaultSelectConfig defaultSelect) =>
+        MatchesRiskTier(pr, defaultSelect);
+
+    private static bool MatchesRiskTier(DependabotPr pr, DefaultSelectConfig defaultSelect) =>
+        IsSemverLevelAllowed(pr.SemverLevel, defaultSelect)
         && (defaultSelect.Grouped || !pr.IsGrouped)
         && !pr.IsSecurityUpdate;
 

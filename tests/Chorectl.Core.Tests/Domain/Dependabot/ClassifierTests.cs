@@ -149,6 +149,56 @@ public class ClassifierTests
         Assert.False(Classifier.DefaultSelected(pr, new DefaultSelectConfig { Major = true }));
     }
 
+    [Theory]
+    [InlineData(SemverLevel.Patch, false, true)]
+    [InlineData(SemverLevel.Minor, false, true)]
+    [InlineData(SemverLevel.Major, false, false)]
+    [InlineData(SemverLevel.Unknown, false, false)]
+    [InlineData(SemverLevel.Patch, true, false)]
+    [InlineData(SemverLevel.Minor, true, false)]
+    public void DefaultSelectedForApproval_SelectsPatchAndMinorButNotMajorUnknownOrGrouped(
+        SemverLevel semverLevel, bool isGrouped, bool expected)
+    {
+        var pr = CreatePr(semverLevel: semverLevel, isGrouped: isGrouped);
+
+        Assert.Equal(expected, Classifier.DefaultSelectedForApproval(pr, new DefaultSelectConfig()));
+    }
+
+    [Fact]
+    public void DefaultSelectedForApproval_NeverSelectsSecurityUpdates_EvenAtPatchLevel()
+    {
+        var pr = CreatePr(semverLevel: SemverLevel.Patch, isSecurityUpdate: true);
+
+        Assert.False(Classifier.DefaultSelectedForApproval(pr, new DefaultSelectConfig()));
+    }
+
+    [Fact]
+    public void DefaultSelectedForApproval_DoesNotRequireReadyToMerge_UnlikeDefaultSelected()
+    {
+        // Every PR reaching the approve screen has ReviewStatus.ReviewRequired, which
+        // IsReadyToMerge (and therefore DefaultSelected) would disqualify outright.
+        var pr = CreatePr(review: ReviewStatus.ReviewRequired, semverLevel: SemverLevel.Patch);
+
+        Assert.False(Classifier.DefaultSelected(pr, new DefaultSelectConfig()));
+        Assert.True(Classifier.DefaultSelectedForApproval(pr, new DefaultSelectConfig()));
+    }
+
+    [Fact]
+    public void DefaultSelectedForApproval_WithMajorEnabledInConfig_SelectsMajorBumps()
+    {
+        var pr = CreatePr(semverLevel: SemverLevel.Major);
+
+        Assert.True(Classifier.DefaultSelectedForApproval(pr, new DefaultSelectConfig { Major = true }));
+    }
+
+    [Fact]
+    public void DefaultSelectedForApproval_WithGroupedEnabledInConfig_SelectsGroupedPrs()
+    {
+        var pr = CreatePr(isGrouped: true);
+
+        Assert.True(Classifier.DefaultSelectedForApproval(pr, new DefaultSelectConfig { Grouped = true }));
+    }
+
     [Fact]
     public void IsReadyToMerge_AndNeedsRebase_TreatAnUnrecognizedMergeStateStatusLikeClean()
     {

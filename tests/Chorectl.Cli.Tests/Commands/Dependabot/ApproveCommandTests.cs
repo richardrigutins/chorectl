@@ -336,6 +336,22 @@ public class ApproveCommandTests
     }
 
     [Fact]
+    public async Task RunAsync_ShowsSecurityBadge_SameAsMergeAndRebaseScreens()
+    {
+        var approver = new FakePullRequestApprover();
+        var (command, console) = CreateCommand(
+            approver,
+            SearchResponseWithSecurityAlert(
+                securityPrNumber: 1,
+                Node(1, "Bump left-pad from 1.0.0 to 1.0.1", review: "REVIEW_REQUIRED")));
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        await command.RunAsync(Settings());
+
+        Assert.Contains("security", console.Output);
+    }
+
+    [Fact]
     public async Task RunAsync_WithRepo_ScopesDiscoveryAndFetchToThatRepo()
     {
         var approver = new FakePullRequestApprover();
