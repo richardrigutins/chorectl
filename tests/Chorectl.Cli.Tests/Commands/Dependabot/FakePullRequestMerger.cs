@@ -21,6 +21,9 @@ internal sealed class FakePullRequestMerger : IPullRequestMerger
     /// <summary>PR numbers that fail with <see cref="GitHubRateLimitException"/> on every merge attempt.</summary>
     public HashSet<int> FailWithRateLimitErrorForPrNumbers { get; } = [];
 
+    /// <summary>PR numbers that fail with <see cref="GitHubRateLimitException"/> only their first merge attempt, then succeed.</summary>
+    public HashSet<int> RateLimitOnceThenSucceedForPrNumbers { get; } = [];
+
     /// <summary>PR numbers that fail with an unrecognized exception (e.g. a 404/422) on every merge attempt.</summary>
     public HashSet<int> FailWithUnexpectedErrorForPrNumbers { get; } = [];
 
@@ -41,7 +44,8 @@ internal sealed class FakePullRequestMerger : IPullRequestMerger
             throw new GitHubAuthException(FailureMessage ?? $"insufficient permission to merge #{pr.Number}");
         }
 
-        if (FailWithRateLimitErrorForPrNumbers.Contains(pr.Number))
+        if (FailWithRateLimitErrorForPrNumbers.Contains(pr.Number)
+            || (RateLimitOnceThenSucceedForPrNumbers.Contains(pr.Number) && alreadyFailedOnce.Add(pr.Number)))
         {
             throw new GitHubRateLimitException(FailureMessage ?? $"rate limited on #{pr.Number}");
         }

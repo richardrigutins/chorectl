@@ -1,4 +1,5 @@
 using Chorectl.Cli.Commands.Dependabot;
+using Chorectl.Core.Config;
 using Chorectl.Core.GitHub;
 using Spectre.Console.Testing;
 
@@ -386,22 +387,58 @@ public class RebaseCommandTests
     }
 
     [Fact]
-    public async Task RunAsync_WhenCommentFailsWithRateLimit_ReportsFailureWithoutInsufficientPermissionMessage()
+    public async Task RunAsync_WhenCommentIsRateLimitedOnce_RetriesWithBackoffAndSucceeds()
     {
-        var commenter = new FakePullRequestCommenter { FailWithRateLimitErrorForPrNumbers = { 1 } };
+        var commenter = new FakePullRequestCommenter { RateLimitOnceThenSucceedForPrNumbers = { 1 } };
+        var waits = new List<TimeSpan>();
         var (command, console) = CreateCommand(
             commenter,
             [
                 SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")),
                 ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
-            ]);
+            ],
+            delay: (wait, _) =>
+            {
+                waits.Add(wait);
+                return Task.CompletedTask;
+            });
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        var exitCode = await command.RunAsync(Settings());
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(2, commenter.CommentCalls.Count);
+        Assert.Equal([TimeSpan.FromSeconds(1)], waits);
+        Assert.Contains("rate limited by GitHub", console.Output);
+        Assert.Contains("requested", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenCommentKeepsBeingRateLimited_GivesUpAfterMaxBackoffAndStopsTheBatch()
+    {
+        var commenter = new FakePullRequestCommenter { FailWithRateLimitErrorForPrNumbers = { 1 } };
+        var (command, console) = CreateCommand(
+            commenter,
+            [
+                SearchResponse(
+                    Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                    Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                ByNumberResponse(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+            ],
+            delay: NoOpDelay,
+            maxBackoffSeconds: 3);
         console.Input.PushKey(ConsoleKey.Enter);
 
         var exitCode = await command.RunAsync(Settings());
 
         Assert.Equal(1, exitCode);
-        Assert.Contains("failed — rate limited by GitHub", console.Output);
+        // 1s + 2s exhausts a 3s budget - three attempts on PR #1, none on #2 since the batch stops.
+        Assert.Equal(3, commenter.CommentCalls.Count);
         Assert.DoesNotContain("insufficient permission", console.Output);
+        Assert.Contains("rate limit did not clear", console.Output);
+        Assert.Contains("stopped", console.Output);
+        Assert.Contains("Done: 0 requested, 0 skipped, 2 failed", console.Output);
     }
 
     [Fact]
@@ -622,6 +659,8 @@ public class RebaseCommandTests
         Assert.DoesNotContain("Changelog", console.Output);
     }
 
+    private static Task NoOpDelay(TimeSpan wait, CancellationToken cancellationToken) => Task.CompletedTask;
+
     private static (RebaseCommand Command, TestConsole Console) CreateCommand(
         FakePullRequestCommenter commenter,
         params string[] graphQlResponses) =>
@@ -630,14 +669,17 @@ public class RebaseCommandTests
     private static (RebaseCommand Command, TestConsole Console) CreateCommand(
         FakePullRequestCommenter commenter,
         string[] graphQlResponses,
-        FakeAuditLog? auditLog)
+        FakeAuditLog? auditLog = null,
+        Func<TimeSpan, CancellationToken, Task>? delay = null,
+        int? maxBackoffSeconds = null)
     {
         var console = new TestConsole().Interactive();
         var restClient = new RestClient(new FakeRepositorySource(
             new RepositoryInfo("octocat", "sample-repo", IsArchived: false, IsFork: false)));
         var handler = new FakeHttpMessageHandler(graphQlResponses);
         var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
-        var command = new RebaseCommand(restClient, graphQlClient, commenter, console, auditLog ?? new FakeAuditLog());
+        var config = maxBackoffSeconds is null ? null : new ChorectlConfig { MaxBackoffSeconds = maxBackoffSeconds.Value };
+        var command = new RebaseCommand(restClient, graphQlClient, commenter, console, auditLog ?? new FakeAuditLog(), config, delay);
         return (command, console);
     }
 

@@ -538,9 +538,9 @@ public class MergeCommandTests
     }
 
     [Fact]
-    public async Task RunAsync_WhenMergeFailsWithRateLimit_SkipsImmediatelyWithoutPollingAndDoesNotReportInsufficientPermission()
+    public async Task RunAsync_WhenMergeIsRateLimitedOnce_RetriesWithBackoffAndSucceeds()
     {
-        var merger = new FakePullRequestMerger { FailWithRateLimitErrorForPrNumbers = { 1 } };
+        var merger = new FakePullRequestMerger { RateLimitOnceThenSucceedForPrNumbers = { 1 } };
         var waits = new List<TimeSpan>();
         var (command, console) = CreateCommand(
             merger,
@@ -557,12 +557,39 @@ public class MergeCommandTests
 
         var exitCode = await command.RunAsync(Settings());
 
+        Assert.Equal(0, exitCode);
+        Assert.Equal(2, merger.MergeCalls.Count);
+        Assert.Equal([TimeSpan.FromSeconds(1)], waits);
+        Assert.Contains("rate limited by GitHub", console.Output);
+        Assert.Contains("merged", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenMergeKeepsBeingRateLimited_GivesUpAfterMaxBackoffAndStopsTheBatch()
+    {
+        var merger = new FakePullRequestMerger { FailWithRateLimitErrorForPrNumbers = { 1 } };
+        var (command, console) = CreateCommand(
+            merger,
+            [
+                SearchResponse(
+                    Node(1, "Bump left-pad from 1.0.0 to 1.0.1"),
+                    Node(2, "Bump right-pad from 1.0.0 to 1.0.1")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1"),
+                ByNumberResponse(2, "Bump right-pad from 1.0.0 to 1.0.1"),
+            ],
+            delay: NoOpDelay,
+            maxBackoffSeconds: 3);
+        console.Input.PushKey(ConsoleKey.Enter);
+
+        var exitCode = await command.RunAsync(Settings());
+
         Assert.Equal(1, exitCode);
-        var call = Assert.Single(merger.MergeCalls);
-        Assert.Equal(1, call.Pr.Number);
-        Assert.Empty(waits);
-        Assert.Contains("failed — rate limited by GitHub", console.Output);
+        // 1s + 2s exhausts a 3s budget - three attempts on PR #1, none on #2 since the batch stops.
+        Assert.Equal(3, merger.MergeCalls.Count);
         Assert.DoesNotContain("insufficient permission", console.Output);
+        Assert.Contains("rate limit did not clear", console.Output);
+        Assert.Contains("stopped", console.Output);
+        Assert.Contains("Done: 0 merged, 0 skipped, 2 failed", console.Output);
     }
 
     [Fact]
@@ -619,7 +646,7 @@ public class MergeCommandTests
     }
 
     [Fact]
-    public async Task RunAsync_WhenPollRetryFailsWithRateLimit_StopsPollingImmediatelyWithoutReportingInsufficientPermission()
+    public async Task RunAsync_WhenPollRetryKeepsBeingRateLimited_GivesUpAfterMaxBackoffAndStopsTheBatch()
     {
         var merger = new FakePullRequestMerger { FailPollRetryWithRateLimitErrorForPrNumbers = { 1 } };
         var (command, console) = CreateCommand(
@@ -631,15 +658,19 @@ public class MergeCommandTests
             ],
             delay: NoOpDelay,
             pollInterval: TimeSpan.FromSeconds(1),
-            pollTimeout: TimeSpan.FromSeconds(10));
+            pollTimeout: TimeSpan.FromSeconds(10),
+            maxBackoffSeconds: 3);
         console.Input.PushKey(ConsoleKey.Enter);
 
         var exitCode = await command.RunAsync(Settings());
 
         Assert.Equal(1, exitCode);
-        Assert.Equal([1, 1], merger.MergeCalls.Select(c => c.Pr.Number));
-        Assert.Contains("failed — rate limited by GitHub", console.Output);
+        // First merge attempt: MergeNotReadyException (enters the poll loop). Poll retry: rate
+        // limited on every attempt - 1s + 2s exhausts a 3s budget, so 3 more attempts (4 total).
+        Assert.Equal(4, merger.MergeCalls.Count);
         Assert.DoesNotContain("insufficient permission", console.Output);
+        Assert.Contains("rate limit did not clear", console.Output);
+        Assert.Contains("stopped", console.Output);
     }
 
     [Fact]
@@ -967,20 +998,22 @@ public class MergeCommandTests
         TimeSpan? pollInterval = null,
         TimeSpan? pollTimeout = null,
         FakeAuditLog? auditLog = null,
-        DefaultSelectConfig? defaultSelect = null)
+        DefaultSelectConfig? defaultSelect = null,
+        int? maxBackoffSeconds = null)
     {
         var console = new TestConsole().Interactive();
         var restClient = new RestClient(new FakeRepositorySource(
             new RepositoryInfo("octocat", "sample-repo", IsArchived: false, IsFork: false)));
         var handler = new FakeHttpMessageHandler(graphQlResponses);
         var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
-        var config = pollInterval is null && pollTimeout is null && defaultSelect is null
+        var config = pollInterval is null && pollTimeout is null && defaultSelect is null && maxBackoffSeconds is null
             ? null
             : new ChorectlConfig
             {
                 MergePollIntervalSeconds = (int)(pollInterval ?? TimeSpan.FromSeconds(15)).TotalSeconds,
                 MergePollTimeoutSeconds = (int)(pollTimeout ?? TimeSpan.FromSeconds(120)).TotalSeconds,
                 DefaultSelect = defaultSelect ?? new DefaultSelectConfig(),
+                MaxBackoffSeconds = maxBackoffSeconds ?? new ChorectlConfig().MaxBackoffSeconds,
             };
         var command = new MergeCommand(restClient, graphQlClient, merger, console, auditLog ?? new FakeAuditLog(), config, delay);
         return (command, console);

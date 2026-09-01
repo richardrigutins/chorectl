@@ -73,6 +73,10 @@ internal static class DependabotActionSupport
         return 0;
     }
 
+    /// <param name="notAttempted">
+    /// Builds the result for a PR that was never attempted because the batch already stopped
+    /// (see below). Also used for the PR that was mid-attempt when the backoff budget ran out.
+    /// </param>
     public static async Task<List<TResult>> ExecuteGroupedByRepoAsync<TResult>(
         IAnsiConsole console,
         IAuditLog auditLog,
@@ -85,9 +89,15 @@ internal static class DependabotActionSupport
         Func<TResult, string> describeOutcome,
         Func<TResult, string?> reason,
         Action<IAnsiConsole, TResult> renderResult,
+        Func<DependabotPr, TResult> notAttempted,
         CancellationToken cancellationToken)
     {
         var results = new List<TResult>();
+
+        // A rate limit is account-wide - once RateLimitBackoff gives up on one PR (AC-11.3), every
+        // other PR would just hit the same wall, so the whole batch stops there instead of burning
+        // a full backoff budget per remaining PR.
+        var batchStopped = false;
 
         foreach (var group in selected.GroupBy(p => p.Repo))
         {
@@ -99,7 +109,24 @@ internal static class DependabotActionSupport
 
             foreach (var candidate in group)
             {
-                var result = await actOnOneAsync(owner, candidate, cancellationToken);
+                TResult result;
+                if (batchStopped)
+                {
+                    result = notAttempted(candidate);
+                }
+                else
+                {
+                    try
+                    {
+                        result = await actOnOneAsync(owner, candidate, cancellationToken);
+                    }
+                    catch (RateLimitBackoffExhaustedException)
+                    {
+                        batchStopped = true;
+                        result = notAttempted(candidate);
+                    }
+                }
+
                 results.Add(result);
 
                 // Dry run performs no actual mutation, so nothing is recorded (AC-08.1).
