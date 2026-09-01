@@ -6,6 +6,7 @@ on:
 
 env:
   NODE_VERSION: '24'
+  DOTNET_VERSION: '10.0.x'
 
 permissions:
   contents: write
@@ -15,6 +16,9 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    outputs:
+      new_release_published: ${{ steps.semantic.outputs.new_release_published }}
+      new_release_version: ${{ steps.semantic.outputs.new_release_version }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -23,5 +27,48 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - uses: cycjimmy/semantic-release-action@v6
+        id: semantic
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build:
+    needs: release
+    if: needs.release.outputs.new_release_published == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - rid: win-x64
+            bin: chorectl.exe
+            archive: chorectl-win-x64.zip
+          - rid: linux-x64
+            bin: chorectl
+            archive: chorectl-linux-x64.tar.gz
+          - rid: osx-x64
+            bin: chorectl
+            archive: chorectl-osx-x64.tar.gz
+          - rid: osx-arm64
+            bin: chorectl
+            archive: chorectl-osx-arm64.tar.gz
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - run: >
+          dotnet publish src/Chorectl.Cli/Chorectl.Cli.csproj
+          -r ${{ matrix.rid }} -c Release --self-contained
+          -p:PublishSingleFile=true
+          -p:Version=${{ needs.release.outputs.new_release_version }}
+          -o publish/${{ matrix.rid }}
+      - name: Package release archive
+        working-directory: publish/${{ matrix.rid }}
+        run: |
+          if [ "${{ matrix.rid }}" = "win-x64" ]; then
+            zip "$GITHUB_WORKSPACE/${{ matrix.archive }}" "${{ matrix.bin }}"
+          else
+            tar -czf "$GITHUB_WORKSPACE/${{ matrix.archive }}" "${{ matrix.bin }}"
+          fi
+      - run: gh release upload "v${{ needs.release.outputs.new_release_version }}" "${{ matrix.archive }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
