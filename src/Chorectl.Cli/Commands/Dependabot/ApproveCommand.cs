@@ -26,12 +26,15 @@ public sealed class ApproveCommand(
     IPullRequestApprover approver,
     IAnsiConsole console,
     IAuditLog auditLog,
-    ChorectlConfig? config = null) : AsyncCommand<ApproveCommand.Settings>
+    ChorectlConfig? config = null,
+    Func<TimeSpan, CancellationToken, Task>? delay = null) : AsyncCommand<ApproveCommand.Settings>
 {
     public sealed class Settings : ActionSettings;
 
     private static readonly ChorectlConfig DefaultConfig = new();
 
+    private readonly Func<TimeSpan, CancellationToken, Task> delay = delay ?? Task.Delay;
+    private readonly int maxBackoffSeconds = (config ?? DefaultConfig).MaxBackoffSeconds;
     private readonly DefaultSelectConfig defaultSelect = (config ?? DefaultConfig).DefaultSelect;
 
     protected override Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken) =>
@@ -39,6 +42,8 @@ public sealed class ApproveCommand(
 
     public async Task<int> RunAsync(Settings settings, CancellationToken cancellationToken = default)
     {
+        graphQlClient.OnRateLimitWaiting = settings.Json ? null : wait => ProgressDisplay.RenderRateLimitWait(console, wait);
+
         var (prs, owners, truncatedRepos) = await DependabotActionSupport.FetchCandidatesAsync(restClient, graphQlClient, console, settings, cancellationToken);
 
         var needsApproval = prs.Where(Classifier.NeedsApproval).OrderBy(p => p.Repo).ThenBy(p => p.Number).ToList();
@@ -70,11 +75,12 @@ public sealed class ApproveCommand(
             selected,
             settings.DryRun,
             settings.Json,
-            (owner, pr, ct) => ApproveOneAsync(owner, pr, settings.DryRun, ct),
+            (owner, pr, ct) => ApproveOneAsync(owner, pr, settings.DryRun, settings.Json, ct),
             r => r.Pr,
             r => DescribeOutcome(r.Outcome),
             r => r.Reason,
             ProgressDisplay.RenderApproveResult,
+            pr => new BatchResult<ApproveOutcome>(pr, ApproveOutcome.Failed, "rate limit did not clear - batch stopped"),
             cancellationToken);
 
         if (settings.Json)
@@ -89,7 +95,7 @@ public sealed class ApproveCommand(
         return results.Any(r => r.Outcome == ApproveOutcome.Failed) ? 1 : 0;
     }
 
-    private async Task<BatchResult<ApproveOutcome>> ApproveOneAsync(string owner, DependabotPr pr, bool dryRun, CancellationToken cancellationToken)
+    private async Task<BatchResult<ApproveOutcome>> ApproveOneAsync(string owner, DependabotPr pr, bool dryRun, bool json, CancellationToken cancellationToken)
     {
         // Dependabot can close or recreate a PR between list time and act time - re-verify it's
         // still the same open PR immediately before submitting a review on it.
@@ -107,18 +113,19 @@ public sealed class ApproveCommand(
 
         try
         {
-            await approver.ApproveAsync(owner, refetched, cancellationToken);
+            await RateLimitBackoff.RunAsync(
+                () => approver.ApproveAsync(owner, refetched, cancellationToken),
+                maxBackoffSeconds,
+                delay,
+                json ? null : wait => ProgressDisplay.RenderRateLimitWait(console, wait),
+                cancellationToken);
             return new BatchResult<ApproveOutcome>(refetched, ApproveOutcome.Approved);
         }
         catch (GitHubAuthException ex)
         {
             return new BatchResult<ApproveOutcome>(refetched, ApproveOutcome.Failed, $"insufficient permission to review - {ex.Message}");
         }
-        catch (GitHubRateLimitException)
-        {
-            return new BatchResult<ApproveOutcome>(refetched, ApproveOutcome.Failed, "rate limited by GitHub - try again shortly");
-        }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not RateLimitBackoffExhaustedException)
         {
             return new BatchResult<ApproveOutcome>(refetched, ApproveOutcome.Failed, $"unexpected error, likely a tool bug - {ex.Message}");
         }

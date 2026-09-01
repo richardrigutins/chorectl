@@ -54,7 +54,7 @@ public static class CompositionRoot
                 BaseAddress = new Uri("https://api.github.com/"),
             };
             httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("chorectl", "1.0"));
-            return new GraphQlClient(httpClient);
+            return new GraphQlClient(httpClient, lazyConfig.Value.MaxBackoffSeconds);
         });
 
         var app = new CommandApp(new TypeRegistrar(services));

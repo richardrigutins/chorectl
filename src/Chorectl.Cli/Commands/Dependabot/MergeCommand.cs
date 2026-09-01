@@ -36,6 +36,7 @@ public sealed class MergeCommand(
     private readonly Func<TimeSpan, CancellationToken, Task> delay = delay ?? Task.Delay;
     private readonly TimeSpan mergePollInterval = TimeSpan.FromSeconds((config ?? DefaultConfig).MergePollIntervalSeconds);
     private readonly TimeSpan mergePollTimeout = TimeSpan.FromSeconds((config ?? DefaultConfig).MergePollTimeoutSeconds);
+    private readonly int maxBackoffSeconds = (config ?? DefaultConfig).MaxBackoffSeconds;
     private readonly DefaultSelectConfig defaultSelect = (config ?? DefaultConfig).DefaultSelect;
 
     protected override Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken) =>
@@ -43,6 +44,8 @@ public sealed class MergeCommand(
 
     public async Task<int> RunAsync(Settings settings, CancellationToken cancellationToken = default)
     {
+        graphQlClient.OnRateLimitWaiting = settings.Json ? null : wait => ProgressDisplay.RenderRateLimitWait(console, wait);
+
         var (prs, owners, truncatedRepos) = await DependabotActionSupport.FetchCandidatesAsync(restClient, graphQlClient, console, settings, cancellationToken);
 
         var ready = prs.Where(Classifier.IsReadyToMerge).OrderBy(p => p.Repo).ThenBy(p => p.Number).ToList();
@@ -79,6 +82,7 @@ public sealed class MergeCommand(
             r => DescribeOutcome(r.Outcome),
             r => r.Reason,
             ProgressDisplay.RenderResult,
+            pr => new BatchResult<MergeOutcome>(pr, MergeOutcome.Failed, "rate limit did not clear - batch stopped"),
             cancellationToken);
 
         if (settings.Json)
@@ -118,7 +122,7 @@ public sealed class MergeCommand(
         // The only retryable failure is MergeNotReadyException (US-12/AC-12.1) - waiting won't
         // fix a permission problem (AC-12.2) or a likely tool bug (404, 422, unrecognized
         // response; AC-12.3), so both of those skip immediately instead of entering the poll loop.
-        var result = await TryMergeAsync(owner, refetched, cancellationToken);
+        var result = await TryMergeAsync(owner, refetched, json, cancellationToken);
         return result ?? await PollAndRetryMergeAsync(owner, refetched, json, cancellationToken);
     }
 
@@ -127,13 +131,21 @@ public sealed class MergeCommand(
     /// <see langword="null"/> only for <see cref="MergeNotReadyException"/> - the one retryable
     /// failure - since what "retryable" means differs by call site (enter the poll loop for the
     /// first attempt; keep looping for a poll-loop retry). Every other outcome, success included,
-    /// is a terminal <see cref="BatchResult{TOutcome}"/>.
+    /// is a terminal <see cref="BatchResult{TOutcome}"/>. A rate limit is retried transparently by
+    /// <see cref="RateLimitBackoff"/> (US-11); only <see cref="RateLimitBackoffExhaustedException"/>
+    /// - the budget running out - escapes here, deliberately uncaught, so
+    /// <see cref="DependabotActionSupport.ExecuteGroupedByRepoAsync{TResult}"/> can stop the batch.
     /// </summary>
-    private async Task<BatchResult<MergeOutcome>?> TryMergeAsync(string owner, DependabotPr pr, CancellationToken cancellationToken)
+    private async Task<BatchResult<MergeOutcome>?> TryMergeAsync(string owner, DependabotPr pr, bool json, CancellationToken cancellationToken)
     {
         try
         {
-            await merger.MergeAsync(owner, pr, cancellationToken);
+            await RateLimitBackoff.RunAsync(
+                () => merger.MergeAsync(owner, pr, cancellationToken),
+                maxBackoffSeconds,
+                delay,
+                json ? null : wait => ProgressDisplay.RenderRateLimitWait(console, wait),
+                cancellationToken);
             return new BatchResult<MergeOutcome>(pr, MergeOutcome.Merged);
         }
         catch (MergeNotReadyException)
@@ -144,13 +156,7 @@ public sealed class MergeCommand(
         {
             return new BatchResult<MergeOutcome>(pr, MergeOutcome.Failed, $"insufficient permission to merge - {ex.Message}");
         }
-        catch (GitHubRateLimitException)
-        {
-            // Distinct from GitHubAuthException - not a permission problem, and not the tool's
-            // fault either. Backoff-and-retry is Phase 3 (US-11); for now, report it accurately.
-            return new BatchResult<MergeOutcome>(pr, MergeOutcome.Failed, "rate limited by GitHub - try again shortly");
-        }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not RateLimitBackoffExhaustedException)
         {
             return new BatchResult<MergeOutcome>(pr, MergeOutcome.Failed, $"unexpected error, likely a tool bug - {ex.Message}");
         }
@@ -158,10 +164,10 @@ public sealed class MergeCommand(
 
     private Task<BatchResult<MergeOutcome>> PollAndRetryMergeAsync(string owner, DependabotPr pr, bool json, CancellationToken cancellationToken) =>
         json
-            ? PollLoopAsync(owner, pr, null, cancellationToken)
-            : ProgressDisplay.RunLivePollAsync(console, pr, mergePollTimeout, onTick => PollLoopAsync(owner, pr, onTick, cancellationToken));
+            ? PollLoopAsync(owner, pr, json, null, cancellationToken)
+            : ProgressDisplay.RunLivePollAsync(console, pr, mergePollTimeout, onTick => PollLoopAsync(owner, pr, json, onTick, cancellationToken));
 
-    private async Task<BatchResult<MergeOutcome>> PollLoopAsync(string owner, DependabotPr pr, Action<TimeSpan>? onTick, CancellationToken cancellationToken)
+    private async Task<BatchResult<MergeOutcome>> PollLoopAsync(string owner, DependabotPr pr, bool json, Action<TimeSpan>? onTick, CancellationToken cancellationToken)
     {
         var current = pr;
         var elapsed = TimeSpan.Zero;
@@ -196,7 +202,7 @@ public sealed class MergeCommand(
             // once the conflict state clears (AC-03.4).
             if (current.MergeStateStatus != MergeStateStatuses.Behind && current.Ci == CiStatus.Passing)
             {
-                var result = await TryMergeAsync(owner, current, cancellationToken);
+                var result = await TryMergeAsync(owner, current, json, cancellationToken);
                 if (result is not null)
                 {
                     return result;

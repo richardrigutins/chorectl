@@ -16,6 +16,13 @@ public static class ProgressDisplay
 
     public static void RenderRepoHeader(IAnsiConsole console, string repo) => console.MarkupLine(repo.EscapeMarkup());
 
+    /// <summary>
+    /// Shows that a request is being retried after a rate-limit response, so the screen doesn't
+    /// look frozen while <see cref="Chorectl.Core.GitHub.RateLimitBackoff"/> waits (AC-11.2).
+    /// </summary>
+    public static void RenderRateLimitWait(IAnsiConsole console, TimeSpan wait) =>
+        console.MarkupLine($"   [yellow]⏳ rate limited by GitHub — waiting {wait.TotalSeconds:0}s before retrying...[/]");
+
     public static void RenderResult(IAnsiConsole console, BatchResult<MergeOutcome> result)
     {
         var line = $"#{result.Pr.Number}  {Describe(result.Pr)}";

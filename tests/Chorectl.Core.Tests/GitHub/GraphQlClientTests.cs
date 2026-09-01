@@ -1,3 +1,4 @@
+using System.Net;
 using Chorectl.Core.Domain.Dependabot;
 using Chorectl.Core.GitHub;
 
@@ -511,6 +512,67 @@ public class GraphQlClientTests
         Assert.Contains("something went wrong", exception.Message);
     }
 
+    [Fact]
+    public async Task FetchDependabotPrsAsync_WhenRateLimitedThenSucceeds_RetriesAndReturnsTheResult()
+    {
+        var handler = FakeHttpMessageHandler.WithStatuses(
+            (HttpStatusCode.TooManyRequests, "{}"),
+            (HttpStatusCode.OK, SingleNodeResponse("""
+                "reviewDecision": null,
+                "mergeStateStatus": "CLEAN",
+                "commits": { "nodes": [] }
+                """)));
+        var waits = new List<TimeSpan>();
+        var client = CreateClient(handler, onRateLimitWaiting: waits.Add);
+
+        var (prs, _) = await client.FetchDependabotPrsAsync([new RepositoryInfo("octocat", "repo", IsArchived: false, IsFork: false)]);
+
+        Assert.Single(prs);
+        Assert.Equal([TimeSpan.FromSeconds(1)], waits);
+    }
+
+    [Fact]
+    public async Task FetchDependabotPrsAsync_WhenForbiddenWithoutRateLimitHeader_ThrowsInsteadOfRetrying()
+    {
+        var handler = FakeHttpMessageHandler.WithStatuses((HttpStatusCode.Forbidden, "{}"));
+        var client = CreateClient(handler);
+
+        await Assert.ThrowsAsync<HttpRequestException>(
+            () => client.FetchDependabotPrsAsync([new RepositoryInfo("octocat", "repo", IsArchived: false, IsFork: false)]));
+    }
+
+    [Fact]
+    public async Task FetchDependabotPrsAsync_WhenRateLimitNeverClears_ThrowsRateLimitBackoffExhaustedException()
+    {
+        var handler = FakeHttpMessageHandler.WithStatuses(
+            (HttpStatusCode.TooManyRequests, "{}"),
+            (HttpStatusCode.TooManyRequests, "{}"));
+        var client = CreateClient(handler, maxBackoffSeconds: 1);
+
+        await Assert.ThrowsAsync<RateLimitBackoffExhaustedException>(
+            () => client.FetchDependabotPrsAsync([new RepositoryInfo("octocat", "repo", IsArchived: false, IsFork: false)]));
+    }
+
+    [Fact]
+    public async Task RefetchAsync_WhenRateLimitedThenSucceeds_RetriesAndReturnsTheResult()
+    {
+        var handler = FakeHttpMessageHandler.WithStatuses(
+            (HttpStatusCode.TooManyRequests, "{}"),
+            (HttpStatusCode.OK, SingleByNumberResponse("""
+                "reviewDecision": null,
+                "mergeStateStatus": "CLEAN",
+                "state": "OPEN",
+                "commits": { "nodes": [] }
+                """)));
+        var waits = new List<TimeSpan>();
+        var client = CreateClient(handler, onRateLimitWaiting: waits.Add);
+
+        var refetched = await client.RefetchAsync("octocat", SamplePr());
+
+        Assert.NotNull(refetched);
+        Assert.Equal([TimeSpan.FromSeconds(1)], waits);
+    }
+
     private static DependabotPr SamplePr() => new()
     {
         Repo = "sample-repo",
@@ -541,11 +603,13 @@ public class GraphQlClientTests
         }
         """;
 
-    private static GraphQlClient CreateClient(FakeHttpMessageHandler handler)
+    private static GraphQlClient CreateClient(FakeHttpMessageHandler handler, int maxBackoffSeconds = 300, Action<TimeSpan>? onRateLimitWaiting = null)
     {
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") };
-        return new GraphQlClient(httpClient);
+        return new GraphQlClient(httpClient, maxBackoffSeconds, delay: NoOpDelay) { OnRateLimitWaiting = onRateLimitWaiting };
     }
+
+    private static Task NoOpDelay(TimeSpan wait, CancellationToken cancellationToken) => Task.CompletedTask;
 
     private static string PrNodeJson(int number, string repo, string title = "Bump some-dependency from 1.0.0 to 1.1.0") => $$"""
         {

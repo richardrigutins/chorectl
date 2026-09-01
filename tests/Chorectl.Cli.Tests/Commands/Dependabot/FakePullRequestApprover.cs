@@ -5,13 +5,18 @@ namespace Chorectl.Cli.Tests.Commands.Dependabot;
 
 internal sealed class FakePullRequestApprover : IPullRequestApprover
 {
+    private readonly HashSet<int> alreadyFailedOnce = [];
+
     public List<(string Owner, DependabotPr Pr)> ApproveCalls { get; } = [];
 
     /// <summary>PR numbers that fail with <see cref="GitHubAuthException"/> (insufficient permission).</summary>
     public HashSet<int> FailWithAuthErrorForPrNumbers { get; } = [];
 
-    /// <summary>PR numbers that fail with <see cref="GitHubRateLimitException"/>.</summary>
+    /// <summary>PR numbers that fail with <see cref="GitHubRateLimitException"/> on every attempt.</summary>
     public HashSet<int> FailWithRateLimitErrorForPrNumbers { get; } = [];
+
+    /// <summary>PR numbers that fail with <see cref="GitHubRateLimitException"/> only their first attempt, then succeed.</summary>
+    public HashSet<int> RateLimitOnceThenSucceedForPrNumbers { get; } = [];
 
     /// <summary>PR numbers that fail with an unrecognized exception (e.g. a 404/422).</summary>
     public HashSet<int> FailWithUnexpectedErrorForPrNumbers { get; } = [];
@@ -27,7 +32,8 @@ internal sealed class FakePullRequestApprover : IPullRequestApprover
             throw new GitHubAuthException(FailureMessage ?? $"insufficient permission to review #{pr.Number}");
         }
 
-        if (FailWithRateLimitErrorForPrNumbers.Contains(pr.Number))
+        if (FailWithRateLimitErrorForPrNumbers.Contains(pr.Number)
+            || (RateLimitOnceThenSucceedForPrNumbers.Contains(pr.Number) && alreadyFailedOnce.Add(pr.Number)))
         {
             throw new GitHubRateLimitException(FailureMessage ?? $"rate limited on #{pr.Number}");
         }

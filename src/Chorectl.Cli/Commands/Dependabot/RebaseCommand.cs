@@ -2,6 +2,7 @@ using System.ComponentModel;
 using Chorectl.Cli.Rendering;
 using Chorectl.Cli.Rendering.Dependabot;
 using Chorectl.Core.Audit;
+using Chorectl.Core.Config;
 using Chorectl.Core.Domain.Dependabot;
 using Chorectl.Core.GitHub;
 using Spectre.Console;
@@ -15,12 +16,18 @@ namespace Chorectl.Cli.Commands.Dependabot;
 /// commenting (Dependabot can close or recreate a PR between list time and act time). Reports
 /// "requested" without waiting for Dependabot to actually complete the rebase.
 /// </summary>
+/// <param name="config">
+/// Supplies <c>max_backoff_seconds</c> (US-11). Defaults to a fresh <see cref="ChorectlConfig"/>
+/// when not injected, matching that type's own defaults.
+/// </param>
 public sealed class RebaseCommand(
     RestClient restClient,
     GraphQlClient graphQlClient,
     IPullRequestCommenter commenter,
     IAnsiConsole console,
-    IAuditLog auditLog) : AsyncCommand<RebaseCommand.Settings>
+    IAuditLog auditLog,
+    ChorectlConfig? config = null,
+    Func<TimeSpan, CancellationToken, Task>? delay = null) : AsyncCommand<RebaseCommand.Settings>
 {
     public sealed class Settings : ActionSettings
     {
@@ -31,11 +38,18 @@ public sealed class RebaseCommand(
 
     private const string RebaseComment = "@dependabot rebase";
 
+    private static readonly ChorectlConfig DefaultConfig = new();
+
+    private readonly Func<TimeSpan, CancellationToken, Task> delay = delay ?? Task.Delay;
+    private readonly int maxBackoffSeconds = (config ?? DefaultConfig).MaxBackoffSeconds;
+
     protected override Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken) =>
         RunAsync(settings, cancellationToken);
 
     public async Task<int> RunAsync(Settings settings, CancellationToken cancellationToken = default)
     {
+        graphQlClient.OnRateLimitWaiting = settings.Json ? null : wait => ProgressDisplay.RenderRateLimitWait(console, wait);
+
         var (prs, owners, truncatedRepos) = await DependabotActionSupport.FetchCandidatesAsync(restClient, graphQlClient, console, settings, cancellationToken);
 
         var candidates = (settings.All ? prs : prs.Where(Classifier.NeedsRebase))
@@ -69,11 +83,12 @@ public sealed class RebaseCommand(
             selected,
             settings.DryRun,
             settings.Json,
-            (owner, pr, ct) => RequestOneAsync(owner, pr, settings.DryRun, ct),
+            (owner, pr, ct) => RequestOneAsync(owner, pr, settings.DryRun, settings.Json, ct),
             r => r.Pr,
             r => DescribeOutcome(r.Outcome),
             r => r.Reason,
             ProgressDisplay.RenderRebaseResult,
+            pr => new BatchResult<RebaseOutcome>(pr, RebaseOutcome.Failed, "rate limit did not clear - batch stopped"),
             cancellationToken);
 
         if (settings.Json)
@@ -88,7 +103,7 @@ public sealed class RebaseCommand(
         return results.Any(r => r.Outcome == RebaseOutcome.Failed) ? 1 : 0;
     }
 
-    private async Task<BatchResult<RebaseOutcome>> RequestOneAsync(string owner, DependabotPr pr, bool dryRun, CancellationToken cancellationToken)
+    private async Task<BatchResult<RebaseOutcome>> RequestOneAsync(string owner, DependabotPr pr, bool dryRun, bool json, CancellationToken cancellationToken)
     {
         // Dependabot can close or recreate a PR between list time and act time - re-verify it's
         // still the same open PR immediately before commenting on it.
@@ -106,18 +121,19 @@ public sealed class RebaseCommand(
 
         try
         {
-            await commenter.CommentAsync(owner, refetched, RebaseComment, cancellationToken);
+            await RateLimitBackoff.RunAsync(
+                () => commenter.CommentAsync(owner, refetched, RebaseComment, cancellationToken),
+                maxBackoffSeconds,
+                delay,
+                json ? null : wait => ProgressDisplay.RenderRateLimitWait(console, wait),
+                cancellationToken);
             return new BatchResult<RebaseOutcome>(refetched, RebaseOutcome.Requested);
         }
         catch (GitHubAuthException ex)
         {
             return new BatchResult<RebaseOutcome>(refetched, RebaseOutcome.Failed, $"insufficient permission to comment - {ex.Message}");
         }
-        catch (GitHubRateLimitException)
-        {
-            return new BatchResult<RebaseOutcome>(refetched, RebaseOutcome.Failed, "rate limited by GitHub - try again shortly");
-        }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not RateLimitBackoffExhaustedException)
         {
             return new BatchResult<RebaseOutcome>(refetched, RebaseOutcome.Failed, $"unexpected error, likely a tool bug - {ex.Message}");
         }
