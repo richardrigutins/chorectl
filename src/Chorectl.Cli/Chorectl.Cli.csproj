@@ -11,6 +11,7 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <AssemblyName>chorectl</AssemblyName>
   </PropertyGroup>
 
   <Target Name="husky" BeforeTargets="Restore;CollectPackageReferences" Condition="'$(HUSKY)' != 0 AND '$(CI)' != 'true'">
