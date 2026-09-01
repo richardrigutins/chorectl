@@ -14,7 +14,7 @@ public static class Classifier
     /// conflict) does.
     /// </summary>
     public static bool IsReadyToMerge(DependabotPr pr) =>
-        pr.Ci == CiStatus.Passing
+        (pr.Ci == CiStatus.Passing || pr.Ci == CiStatus.NoChecks)
         && pr.Review != ReviewStatus.ReviewRequired
         && pr.MergeStateStatus != MergeStateStatuses.Dirty
         && !pr.IsDraft;

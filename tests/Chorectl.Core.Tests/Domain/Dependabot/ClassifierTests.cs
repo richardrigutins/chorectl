@@ -36,14 +36,22 @@ public class ClassifierTests
     [InlineData(CiStatus.Passing, ReviewStatus.ReviewRequired, "CLEAN", false, false)]
     [InlineData(CiStatus.Failing, ReviewStatus.NotRequired, "CLEAN", false, false)]
     [InlineData(CiStatus.Pending, ReviewStatus.NotRequired, "CLEAN", false, false)]
-    [InlineData(CiStatus.NoChecks, ReviewStatus.NotRequired, "CLEAN", false, false)]
     [InlineData(CiStatus.Passing, ReviewStatus.NotRequired, "DIRTY", false, false)]
     [InlineData(CiStatus.Passing, ReviewStatus.NotRequired, "BEHIND", false, true)]
     [InlineData(CiStatus.Passing, ReviewStatus.NotRequired, "BLOCKED", false, true)]
     [InlineData(CiStatus.Passing, ReviewStatus.NotRequired, "UNSTABLE", false, true)]
     [InlineData(CiStatus.Passing, ReviewStatus.NotRequired, "UNKNOWN", false, true)]
     [InlineData(CiStatus.Passing, ReviewStatus.NotRequired, "CLEAN", true, false)]
-    public void IsReadyToMerge_RequiresPassingCiNoRequiredReviewNotDraftAndNotConflicting(
+    [InlineData(CiStatus.NoChecks, ReviewStatus.NotRequired, "CLEAN", false, true)]
+    [InlineData(CiStatus.NoChecks, ReviewStatus.Approved, "CLEAN", false, true)]
+    [InlineData(CiStatus.NoChecks, ReviewStatus.ReviewRequired, "CLEAN", false, false)]
+    [InlineData(CiStatus.NoChecks, ReviewStatus.NotRequired, "DIRTY", false, false)]
+    [InlineData(CiStatus.NoChecks, ReviewStatus.NotRequired, "BEHIND", false, true)]
+    [InlineData(CiStatus.NoChecks, ReviewStatus.NotRequired, "BLOCKED", false, true)]
+    [InlineData(CiStatus.NoChecks, ReviewStatus.NotRequired, "UNSTABLE", false, true)]
+    [InlineData(CiStatus.NoChecks, ReviewStatus.NotRequired, "UNKNOWN", false, true)]
+    [InlineData(CiStatus.NoChecks, ReviewStatus.NotRequired, "CLEAN", true, false)]
+    public void IsReadyToMerge_RequiresPassingOrNoChecksCiNoRequiredReviewNotDraftAndNotConflicting(
         CiStatus ci, ReviewStatus review, string mergeStateStatus, bool isDraft, bool expected)
     {
         var pr = CreatePr(ci: ci, review: review, mergeStateStatus: mergeStateStatus, isDraft: isDraft);
