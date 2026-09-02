@@ -12,6 +12,7 @@ public class AppConfigurationTests
 
         Assert.Contains("dependabot", result.Output);
         Assert.Contains("Dependabot pull request triage commands", result.Output);
+        Assert.Contains("update", result.Output);
     }
 
     [Fact]
@@ -52,6 +53,15 @@ public class AppConfigurationTests
         Assert.Contains("Print the resolved config, with defaults applied", result.Output);
         Assert.Contains("set", result.Output);
         Assert.Contains("Set a single config value and persist it", result.Output);
+    }
+
+    [Fact]
+    public async Task UpdateHelp_ShowsDescriptionAndUsageExample()
+    {
+        var result = await RunAsync("update", "--help");
+
+        Assert.Contains("Download and install the latest chorectl release in place", result.Output);
+        Assert.Contains("chorectl update", result.Output);
     }
 
     [Fact]

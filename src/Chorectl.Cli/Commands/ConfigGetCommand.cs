@@ -31,6 +31,7 @@ public sealed class ConfigGetCommand(ConfigLoader configLoader, IAnsiConsole con
         yield return ("merge_poll_interval_seconds", config.MergePollIntervalSeconds.ToString());
         yield return ("merge_poll_timeout_seconds", config.MergePollTimeoutSeconds.ToString());
         yield return ("max_backoff_seconds", config.MaxBackoffSeconds.ToString());
+        yield return ("skip_update_check", Format(config.SkipUpdateCheck));
         yield return ("default_select.patch", Format(config.DefaultSelect.Patch));
         yield return ("default_select.minor", Format(config.DefaultSelect.Minor));
         yield return ("default_select.major", Format(config.DefaultSelect.Major));

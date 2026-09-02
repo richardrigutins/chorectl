@@ -4,4 +4,4 @@ using Spectre.Console;
 
 IGitHubAuthenticator authenticator = new GhCliAuthenticator(new ProcessRunner());
 
-return CompositionRoot.Run(authenticator, args, AnsiConsole.Console);
+return await CompositionRoot.RunAsync(authenticator, args, AnsiConsole.Console);

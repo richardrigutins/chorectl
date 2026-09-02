@@ -100,6 +100,7 @@ public sealed class ConfigLoader(string path)
             "merge_poll_interval_seconds" => config with { MergePollIntervalSeconds = ParsePositiveInt(key, value) },
             "merge_poll_timeout_seconds" => config with { MergePollTimeoutSeconds = ParsePositiveInt(key, value) },
             "max_backoff_seconds" => config with { MaxBackoffSeconds = ParsePositiveInt(key, value) },
+            "skip_update_check" => config with { SkipUpdateCheck = ParseBool(key, value) },
             "default_select.patch" => config with { DefaultSelect = config.DefaultSelect with { Patch = ParseBool(key, value) } },
             "default_select.minor" => config with { DefaultSelect = config.DefaultSelect with { Minor = ParseBool(key, value) } },
             "default_select.major" => config with { DefaultSelect = config.DefaultSelect with { Major = ParseBool(key, value) } },

@@ -51,6 +51,10 @@ public static class AppConfiguration
                 .WithDescription("Set a single config value and persist it.")
                 .WithExample("config", "set", "merge_method", "rebase");
         });
+
+        config.AddCommand<UpdateCommand>("update")
+            .WithDescription("Download and install the latest chorectl release in place.")
+            .WithExample("update");
     }
 
     // Unknown-command help falls back to root help, not the specific branch the user
