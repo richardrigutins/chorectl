@@ -26,6 +26,7 @@ public class ConfigGetCommandTests : IDisposable
         Assert.Contains("merge_poll_interval_seconds: 15", console.Output);
         Assert.Contains("merge_poll_timeout_seconds: 120", console.Output);
         Assert.Contains("max_backoff_seconds: 300", console.Output);
+        Assert.Contains("skip_update_check: false", console.Output);
         Assert.Contains("default_select.patch: true", console.Output);
         Assert.Contains("default_select.minor: true", console.Output);
         Assert.Contains("default_select.major: false", console.Output);

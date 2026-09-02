@@ -13,6 +13,7 @@ public sealed record ChorectlConfig
     public int MergePollIntervalSeconds { get; init; } = 15;
     public int MergePollTimeoutSeconds { get; init; } = 120;
     public int MaxBackoffSeconds { get; init; } = 300;
+    public bool SkipUpdateCheck { get; init; }
     public DefaultSelectConfig DefaultSelect { get; init; } = new();
 }
 

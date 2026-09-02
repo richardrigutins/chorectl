@@ -23,6 +23,7 @@ public class ConfigLoaderTests : IDisposable
         Assert.Equal(15, config.MergePollIntervalSeconds);
         Assert.Equal(120, config.MergePollTimeoutSeconds);
         Assert.Equal(300, config.MaxBackoffSeconds);
+        Assert.False(config.SkipUpdateCheck);
         Assert.True(config.DefaultSelect.Patch);
         Assert.True(config.DefaultSelect.Minor);
         Assert.False(config.DefaultSelect.Major);
@@ -128,6 +129,7 @@ public class ConfigLoaderTests : IDisposable
             MergePollIntervalSeconds = 30,
             MergePollTimeoutSeconds = 240,
             MaxBackoffSeconds = 600,
+            SkipUpdateCheck = true,
             DefaultSelect = new DefaultSelectConfig { Major = true, Grouped = true },
         };
 
@@ -140,6 +142,7 @@ public class ConfigLoaderTests : IDisposable
         Assert.Equal(config.MergePollIntervalSeconds, reloaded.MergePollIntervalSeconds);
         Assert.Equal(config.MergePollTimeoutSeconds, reloaded.MergePollTimeoutSeconds);
         Assert.Equal(config.MaxBackoffSeconds, reloaded.MaxBackoffSeconds);
+        Assert.Equal(config.SkipUpdateCheck, reloaded.SkipUpdateCheck);
         Assert.Equal(config.DefaultSelect, reloaded.DefaultSelect);
     }
 
@@ -165,6 +168,7 @@ public class ConfigLoaderTests : IDisposable
         loader.SetValue("merge_poll_interval_seconds", "30");
         loader.SetValue("merge_poll_timeout_seconds", "240");
         loader.SetValue("max_backoff_seconds", "600");
+        loader.SetValue("skip_update_check", "true");
         loader.SetValue("default_select.patch", "false");
         loader.SetValue("default_select.minor", "false");
         loader.SetValue("default_select.major", "true");
@@ -177,6 +181,7 @@ public class ConfigLoaderTests : IDisposable
         Assert.Equal(30, config.MergePollIntervalSeconds);
         Assert.Equal(240, config.MergePollTimeoutSeconds);
         Assert.Equal(600, config.MaxBackoffSeconds);
+        Assert.True(config.SkipUpdateCheck);
         Assert.False(config.DefaultSelect.Patch);
         Assert.False(config.DefaultSelect.Minor);
         Assert.True(config.DefaultSelect.Major);
@@ -199,6 +204,7 @@ public class ConfigLoaderTests : IDisposable
     [InlineData("merge_poll_interval_seconds", "0")]
     [InlineData("merge_poll_timeout_seconds", "-1")]
     [InlineData("max_backoff_seconds", "0")]
+    [InlineData("skip_update_check", "maybe")]
     [InlineData("default_select.patch", "yes")]
     public void SetValue_WithInvalidValue_ThrowsArgumentException(string key, string value)
     {
