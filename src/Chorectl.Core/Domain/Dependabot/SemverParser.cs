@@ -24,7 +24,7 @@ public static partial class SemverParser
     // Leniently coerces version-tag conventions like "v3" (GitHub Actions) to 3.0.0, and bare
     // major-only tags like "3" (also common for GitHub Actions, e.g. "gittools/actions from 3 to
     // 4") the same way.
-    [GeneratedRegex(@"^(?<v>[vV])?(?<major>\d+)(?:\.(?<minor>\d+))?(?:\.(?<patch>\d+))?")]
+    [GeneratedRegex(@"^(?<v>[vV])?(?<major>\d+)(?:\.(?<minor>\d+))?(?:\.\d+)?")]
     private static partial Regex VersionPattern();
 
     // A bare integer is only coerced to a major-only version when it's short enough to
@@ -108,7 +108,7 @@ public static partial class SemverParser
     /// </summary>
     public static bool IsGrouped(string title) => GroupedTitlePattern().IsMatch(title);
 
-    private static bool TryParseVersion(string version, out (int Major, int Minor, int Patch) parsed)
+    private static bool TryParseVersion(string version, out (int Major, int Minor) parsed)
     {
         var match = VersionPattern().Match(version);
         var hasVPrefix = match.Groups["v"].Success;
@@ -124,8 +124,7 @@ public static partial class SemverParser
 
         parsed = (
             int.Parse(match.Groups["major"].Value),
-            hasMinor ? int.Parse(match.Groups["minor"].Value) : 0,
-            match.Groups["patch"].Success ? int.Parse(match.Groups["patch"].Value) : 0);
+            hasMinor ? int.Parse(match.Groups["minor"].Value) : 0);
         return true;
     }
 }
