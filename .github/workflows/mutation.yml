@@ -1,0 +1,42 @@
+name: Mutation Testing
+
+on:
+  schedule:
+    - cron: '0 0 * * 0' # Sunday at 00:00 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_VERSION: '10.0.x'
+
+jobs:
+  mutation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - run: dotnet restore
+      - run: dotnet tool restore
+
+      - name: Mutation tests
+        working-directory: src/Chorectl.Core
+        run: dotnet stryker --reporter Progress --reporter Markdown --output ./StrykerOutput
+
+      - name: Write job summary
+        if: always()
+        run: cat src/Chorectl.Core/StrykerOutput/reports/mutation-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      # Non-critical: don't fail the pipeline if the upload fails
+      - name: Upload mutation report
+        uses: actions/upload-artifact@v7
+        if: always()
+        continue-on-error: true
+        with:
+          name: mutation-report
+          path: src/Chorectl.Core/StrykerOutput/reports/
+          retention-days: 14

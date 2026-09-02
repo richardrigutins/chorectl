@@ -17,6 +17,8 @@ public class SemverParserTests
     [InlineData("[Chore] Bump js-yaml from 4.1.1 to 4.3.0", SemverLevel.Minor)] // bracketed prefix, capital "Bump"
     [InlineData("Bump gittools/actions from 3 to 4", SemverLevel.Major)] // bare major-only tag, no "v" prefix
     [InlineData("Bump actions/setup-dotnet from 3 to 3", SemverLevel.Patch)]
+    [InlineData("Bump foo from 100 to 200", SemverLevel.Major)] // bare major-only tag at the 3-digit plausibility boundary
+    [InlineData("Bump foo from v1000 to v2000", SemverLevel.Major)] // "v" prefix still parses beyond the bare-major digit limit
     public void Classify_ParsesDependabotTitleAndDiffsVersions(string title, SemverLevel expected)
     {
         Assert.Equal(expected, SemverParser.Classify(title));
