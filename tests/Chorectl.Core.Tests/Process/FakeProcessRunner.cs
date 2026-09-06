@@ -1,7 +1,7 @@
 using System.ComponentModel;
-using Chorectl.Core.GitHub;
+using Chorectl.Core.Process;
 
-namespace Chorectl.Core.Tests.GitHub;
+namespace Chorectl.Core.Tests.Process;
 
 internal sealed class FakeProcessRunner : IProcessRunner
 {
