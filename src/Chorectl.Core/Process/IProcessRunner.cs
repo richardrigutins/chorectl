@@ -1,4 +1,4 @@
-namespace Chorectl.Core.GitHub;
+namespace Chorectl.Core.Process;
 
 /// <summary>
 /// Runs an external process to completion and captures its result.

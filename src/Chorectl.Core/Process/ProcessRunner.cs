@@ -1,7 +1,7 @@
-using System.Diagnostics;
 using System.Text;
+using SystemProcess = System.Diagnostics.Process;
 
-namespace Chorectl.Core.GitHub;
+namespace Chorectl.Core.Process;
 
 /// <summary>
 /// Default <see cref="IProcessRunner"/> that runs a real OS process.
@@ -11,7 +11,7 @@ public sealed class ProcessRunner : IProcessRunner
     /// <inheritdoc/>
     public ProcessResult Run(string fileName, string arguments)
     {
-        var startInfo = new ProcessStartInfo(fileName, arguments)
+        var startInfo = new System.Diagnostics.ProcessStartInfo(fileName, arguments)
         {
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -19,7 +19,7 @@ public sealed class ProcessRunner : IProcessRunner
             CreateNoWindow = true,
         };
 
-        using var process = Process.Start(startInfo)
+        using var process = SystemProcess.Start(startInfo)
             ?? throw new InvalidOperationException($"Failed to start '{fileName}'.");
 
         // Reading stdout to completion before even starting to read stderr (or vice versa) can

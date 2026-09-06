@@ -1,4 +1,6 @@
 using Chorectl.Core.GitHub;
+using Chorectl.Core.Process;
+using Chorectl.Core.Tests.Process;
 
 namespace Chorectl.Core.Tests.GitHub;
 
