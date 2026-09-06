@@ -1,5 +1,29 @@
 # Contributing
 
+## Getting started
+
+Requires the .NET 10 SDK (see [ARCHITECTURE.md](ARCHITECTURE.md) for why). Clone the repo, then:
+
+```sh
+dotnet restore
+dotnet build
+dotnet test
+```
+
+`dotnet restore` also installs this repo's Husky.Net git hooks automatically (see below) - no separate setup step needed.
+
+To run the CLI from source using dotnet, run the following from the repo root:
+
+```sh
+dotnet run --project src/Chorectl.Cli -- <command> [args]
+```
+
+For example:
+
+```sh
+dotnet run --project src/Chorectl.Cli -- dependabot list --repo my-repo
+```
+
 ## Commit messages
 
 This repo follows [Conventional Commits](https://www.conventionalcommits.org/), enforced by `commitlint` on every commit (via a Husky.Net `commit-msg` hook) and again in CI:
@@ -31,4 +55,14 @@ cd src/Chorectl.Core
 dotnet stryker
 ```
 
-More contributing guidelines (setup, testing, PR process) will land here once there's an actual command surface to contribute to.
+## Branch naming
+
+Branch off `main` using `feature/<short-description>`, e.g. `feature/rate-limit-backoff`.
+
+## Pull requests
+
+- Open the PR against `main` and fill in the [PR template](.github/pull_request_template.md) (description, related issue if any, testing notes, checklist).
+- Keep the title under 70 characters, in Conventional Commits format (`feat: ...`, `fix: ...`) - a squash-merge workflow would use it as the resulting commit message, but this repo merges PRs with a merge commit, so every commit inside the PR is linted individually (see above) rather than just the title.
+- Before opening a PR, make sure the full local check passes: `dotnet format --verify-no-changes`, `dotnet build`, `dotnet test`. CI (`.github/workflows/ci.yml`) runs the same checks plus `commitlint` on every commit in the PR, and branch protection on `main` requires it to pass before merging - there are no direct pushes to `main`.
+- A PR that changes classification logic (`SemverParser`, `Classifier`) should re-run mutation testing locally (see above) if the change could plausibly lower the mutation score, since that check only runs weekly in CI, not per PR.
+- Once merged, [semantic-release](https://semantic-release.gitbook.io/) picks up the commits automatically - there's nothing further to do to cut a release.
