@@ -1,31 +1,18 @@
 # chorectl
 
-A standalone .NET CLI tool for the recurring maintenance chores of owning multiple GitHub repos. The first feature area is Dependabot PR triage: reviewing, rebasing, approving, and merging Dependabot PRs across all of your repos from a single keyboard-driven workflow instead of the GitHub web UI, one PR at a time.
+`chorectl` is a CLI tool for the recurring maintenance chores of owning and managing multiple GitHub repos. The main feature area is Dependabot PR triage: reviewing, rebasing, approving, and merging Dependabot PRs across all of your repos from a single keyboard-driven workflow instead of the GitHub web UI, one PR at a time.
 
-> This tool has been built with the aid of generative AI tools.
+In other words, it's an overly complicated script to merge and approve multiple Dependabot PRs at once, with a nicer TUI and some extra smarts (e.g. pre-selecting patch/minor bumps, skipping PRs that aren't mergeable yet, retrying a merge that temporarily isn't ready, etc.).
 
-## Quickstart
-
-```sh
-chorectl dependabot list
-```
-
-```
-chorectl dependabot list · 3 open Dependabot PRs across 2 repos
-
-REPO      #    DEPENDENCY       BUMP     CI   REVIEW  MERGE
-my-repo   42   firebase-tools   minor    ✔    ✔       ✔ clean
-my-repo   41   @angular/core    major    ✔    ○ req'd ✔ clean
-other     17   actions/checkout minor    ●    ✔       ✔ clean
-```
-
-Then `chorectl dependabot merge` to select and merge the ones that are ready.
+> Note: this tool has been built with the aid of generative AI tools.
 
 ## Prerequisites
 
-- [GitHub CLI (`gh`)](https://cli.github.com/), installed and authenticated (`gh auth login`) - `chorectl` uses your existing `gh` credentials and does not have a separate login flow
+- [GitHub CLI (`gh`)](https://cli.github.com/) 2.5.0 or later, installed and authenticated (`gh auth login`) - `chorectl` uses your existing `gh` credentials and does not have a separate login flow
 
 ## Install
+
+Supported platforms: Windows x64, Linux x64, macOS x64, macOS ARM64.
 
 Download the binary matching your OS/architecture from the latest [Release](https://github.com/richardrigutins/chorectl/releases), or use one of the install scripts below, which do that for you:
 
@@ -41,7 +28,7 @@ Windows (PowerShell):
 irm https://raw.githubusercontent.com/richardrigutins/chorectl/main/install.ps1 | iex
 ```
 
-Both scripts install to a per-user location (`~/.local/bin` or `%LOCALAPPDATA%\chorectl`) - no admin/sudo required.
+Both scripts install to a per-user location (`~/.local/bin` or `%LOCALAPPDATA%\chorectl`) - no admin/sudo required. Set `CHORECTL_INSTALL_DIR` before running the script to install somewhere else instead.
 
 ### Updating
 
@@ -50,6 +37,15 @@ chorectl update
 ```
 
 Downloads the matching binary from the latest release and replaces the current one in place - no need to re-run the install script. `chorectl` also checks for a newer version once every 24 hours on startup and prints a one-line notice when one is available; it never updates itself automatically. Skip the check for a single run with `CHORECTL_NO_UPDATE_CHECK=1`, or permanently via [config](#configuration) (`skip_update_check: true`).
+
+### Uninstalling
+
+Delete the binary from wherever it was installed:
+
+- macOS/Linux: `rm ~/.local/bin/chorectl`
+- Windows: delete `%LOCALAPPDATA%\chorectl\chorectl.exe`
+
+This doesn't remove your config or audit log (`~/.config/chorectl/`, `~/.local/share/chorectl/`) - delete those too for a full cleanup.
 
 ## Commands
 
@@ -83,6 +79,8 @@ chorectl dependabot list --security
 
 Shows a checkbox selection of every PR that's ready to merge (CI passing, review satisfied, no conflicts), with patch and minor bumps pre-checked and major/grouped bumps left for you to review manually. Confirming re-verifies each PR's state immediately before merging it, and retries a merge that briefly isn't mergeable (e.g. a sibling PR just got merged and this one is temporarily behind) before giving up.
 
+PRs that don't meet the merge criteria are not shown.
+
 ```sh
 chorectl dependabot merge
 chorectl dependabot merge --dry-run
@@ -93,6 +91,8 @@ chorectl dependabot merge --yes --json   # for cron/automation
 
 Shows a checkbox selection of PRs that need a rebase (conflicting or behind the base branch), pre-selected, and posts `@dependabot rebase` on each one you confirm. Doesn't wait for the rebase to finish - it reports "requested" and exits.
 
+PRs that don't need a rebase are not shown, unless `--all` is used.
+
 ```sh
 chorectl dependabot rebase
 chorectl dependabot rebase --all   # widen to every open PR, e.g. to force a CI re-run; only PRs that actually need a rebase stay pre-selected
@@ -101,6 +101,8 @@ chorectl dependabot rebase --all   # widen to every open PR, e.g. to force a CI 
 ### `chorectl dependabot approve`
 
 Shows a checkbox selection of PRs awaiting review, pre-selected, and submits an approving review on each one you confirm.
+
+PRs that don't need a review are not shown.
 
 ```sh
 chorectl dependabot approve
@@ -171,7 +173,7 @@ Every merge, rebase request, approval, skip, and failure is appended as one JSON
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions and the commit/PR workflow, and [ARCHITECTURE.md](ARCHITECTURE.md) for the technical decisions and data flow behind the tool.
 
 ## License
 

@@ -17,3 +17,4 @@
 - [ ] Tests pass (`dotnet test`)
 - [ ] Code formatting passes (`dotnet format --verify-no-changes`)
 - [ ] No major version bumps without a migration note in the description
+- [ ] Documentation updated if applicable (`README.md`, `ARCHITECTURE.md`, `--help` output)
