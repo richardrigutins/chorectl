@@ -6,6 +6,8 @@ In other words, it's an overly complicated script to merge and approve multiple 
 
 > Note: this tool has been built with the aid of generative AI tools.
 
+> **Pre-release**: `chorectl` is still pre-1.0. Command names, flags, and config keys may change without notice between releases.
+
 ## Prerequisites
 
 - [GitHub CLI (`gh`)](https://cli.github.com/) 2.5.0 or later, installed and authenticated (`gh auth login`) - `chorectl` uses your existing `gh` credentials and does not have a separate login flow
@@ -56,7 +58,7 @@ All `dependabot` subcommands accept these common flags:
 | `-r, --repo <NAME>` | Scope to a single repo by name (e.g. `-r my-repo`), skipping discovery and fetch for every other repo |
 | `-s, --security` | Filter to PRs that resolve a Dependabot security alert |
 | `--json` | Print structured JSON instead of the interactive TUI; implies acting on the full eligible set (see `--yes` below) |
-| `-v, --verbose` | Print diagnostic detail about discovery, fetch, and state-check steps |
+| `--verbose` | Print diagnostic detail about discovery, fetch, and state-check steps |
 
 `merge`, `rebase`, and `approve` additionally accept:
 
@@ -126,6 +128,10 @@ Downloads and installs the latest release in place. See [Updating](#updating).
 ### `chorectl --help`
 
 Root help lists every command; `chorectl <command> --help` (or `chorectl dependabot <subcommand> --help`) shows that command's flags and an example.
+
+### `chorectl --version`
+
+`-v` or `--version` prints the running version and exits, with no other output. A local/dev build with no version embedded at publish time prints `0.0.0-dev`.
 
 ## Configuration
 

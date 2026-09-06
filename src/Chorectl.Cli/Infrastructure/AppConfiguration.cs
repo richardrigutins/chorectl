@@ -1,6 +1,7 @@
 using Chorectl.Cli.Commands;
 using Chorectl.Cli.Commands.Dependabot;
 using Chorectl.Core.GitHub;
+using Chorectl.Core.Update;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
@@ -17,6 +18,12 @@ public static class AppConfiguration
     {
         config.SetApplicationName("chorectl");
         config.SetExceptionHandler((ex, _) => HandleException(ex, config.Settings.Console ?? AnsiConsole.Console));
+
+        // Spectre's built-in handling: "-v" or "--version" as the first argument prints this and
+        // exits, before any command runs. There's no way to enable only the long form, so
+        // dependabot subcommands' own verbose flag is "--verbose" only (no "-v" alias) to avoid
+        // the two flags meaning different things depending on position.
+        config.SetApplicationVersion(CurrentVersion.Value);
 
         config.AddBranch("dependabot", dependabot =>
         {

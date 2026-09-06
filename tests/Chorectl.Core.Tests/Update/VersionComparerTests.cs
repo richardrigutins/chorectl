@@ -9,6 +9,7 @@ public class VersionComparerTests
     [InlineData("v1.3.0", "1.2.3")]
     [InlineData("v2.0.0", "1.2.3")]
     [InlineData("1.2.4", "v1.2.3")]
+    [InlineData("v99.0.0", "0.0.0-dev")]
     public void IsNewer_WhenCandidateIsGreater_ReturnsTrue(string candidate, string current)
     {
         Assert.True(VersionComparer.IsNewer(candidate, current));

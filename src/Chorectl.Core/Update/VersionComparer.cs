@@ -12,8 +12,10 @@ public static class VersionComparer
         TryParse(candidateVersion, out var candidate) && TryParse(currentVersion, out var current) && candidate > current;
 
     // Semver build metadata (a trailing "+..." - e.g. the git commit SHA .NET's SDK appends to
-    // InformationalVersion by default, see Directory.Build.props) never affects precedence, so
-    // it's stripped before parsing rather than treated as part of the version itself.
+    // InformationalVersion by default, see Directory.Build.props) and prerelease identifiers (a
+    // trailing "-..." - e.g. the "0.0.0-dev" placeholder a local build embeds when no version was
+    // passed at publish time, see CurrentVersion) never affect precedence here, so both are
+    // stripped before parsing rather than treated as part of the version itself.
     private static bool TryParse(string version, out Version parsed) =>
-        Version.TryParse(version.Split('+', 2)[0].TrimStart('v', 'V'), out parsed!);
+        Version.TryParse(version.Split('+', 2)[0].Split('-', 2)[0].TrimStart('v', 'V'), out parsed!);
 }

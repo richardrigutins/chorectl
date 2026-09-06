@@ -95,10 +95,14 @@ public static class CompositionRoot
     // so `--help` and a bare invocation keep never triggering the authenticator (this class's
     // existing contract, see the doc comment above) even though the update check itself needs a
     // real GitHub call. `--json` is suppressed here too, so structured output stays clean, and
-    // `update` skips its own redundant check.
+    // `update` skips its own redundant check. `-v`/`--version` as the first argument is Spectre's
+    // own version-flag trigger (see AppConfiguration.Configure's SetApplicationVersion call) and
+    // must print nothing else.
     internal static bool ShouldCheckForUpdate(string[] args) =>
         args.Length > 0
         && !string.Equals(args[0], "update", StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(args[0], "-v", StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(args[0], "--version", StringComparison.OrdinalIgnoreCase)
         && !args.Contains("--help")
         && !args.Contains("-h")
         && !args.Contains("--json")
