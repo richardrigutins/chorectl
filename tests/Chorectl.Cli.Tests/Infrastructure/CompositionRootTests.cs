@@ -1,5 +1,6 @@
 using Chorectl.Cli.Infrastructure;
 using Chorectl.Core.GitHub;
+using Chorectl.Core.Update;
 using Spectre.Console.Testing;
 
 namespace Chorectl.Cli.Tests.Infrastructure;
@@ -27,6 +28,19 @@ public class CompositionRootTests : IDisposable
         Assert.False(authenticator.WasCalled);
         Assert.Equal(0, exitCode);
         Assert.Contains("USAGE", console.Output);
+    }
+
+    [Fact]
+    public async Task Run_WithVersionFlag_PrintsTheVersionAndExits_WithoutCallingTheAuthenticator()
+    {
+        var authenticator = new FakeGitHubAuthenticator(new GitHubAuthException("gh is not authenticated"));
+        var console = new TestConsole();
+
+        var exitCode = await CompositionRoot.RunAsync(authenticator, ["--version"], console, UpdateCheckCachePath);
+
+        Assert.False(authenticator.WasCalled);
+        Assert.Equal(0, exitCode);
+        Assert.Equal(CurrentVersion.Value, console.Output.Trim());
     }
 
     [Fact]
@@ -93,6 +107,8 @@ public class CompositionRootTests : IDisposable
     [InlineData(new object[] { new[] { "-h" } })]
     [InlineData(new object[] { new[] { "update" } })]
     [InlineData(new object[] { new[] { "UPDATE" } })]
+    [InlineData(new object[] { new[] { "-v" } })]
+    [InlineData(new object[] { new[] { "--version" } })]
     [InlineData(new object[] { new[] { "dependabot", "list", "--json" } })]
     public void ShouldCheckForUpdate_ForArgsThatShouldSuppressTheCheck_ReturnsFalse(string[] args)
     {

@@ -6,7 +6,7 @@ namespace Chorectl.Cli.Commands.Dependabot;
 /// <summary>
 /// Flags shared by every <c>dependabot</c> subcommand: <c>-r|--repo</c> to scope discovery and
 /// fetch to a single repo, <c>-s|--security</c> to filter to security-update PRs, <c>--json</c>
-/// to print structured JSON instead of rendering the TUI, and <c>-v|--verbose</c> to print
+/// to print structured JSON instead of rendering the TUI, and <c>--verbose</c> to print
 /// diagnostic detail about discovery/fetch/state-check steps.
 /// </summary>
 public class DependabotSettings : CommandSettings
@@ -23,7 +23,7 @@ public class DependabotSettings : CommandSettings
     [Description("Disable TUI rendering and print structured JSON output.")]
     public bool Json { get; init; }
 
-    [CommandOption("-v|--verbose")]
+    [CommandOption("--verbose")]
     [Description("Print diagnostic detail about discovery, fetch, and state-check steps.")]
     public bool Verbose { get; init; }
 }
