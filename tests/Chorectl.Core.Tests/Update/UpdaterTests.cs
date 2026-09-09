@@ -93,6 +93,49 @@ public class UpdaterTests : IDisposable
         Assert.Equal("old content", File.ReadAllText(executablePath + ".old"));
     }
 
+    [Fact]
+    public async Task UpdateAsync_WhenAlreadyOnTheLatestVersion_OnlyReportsCheckingForRelease()
+    {
+        var releaseSource = new FakeReleaseSource(new ReleaseInfo("v1.0.0", []));
+        var httpClient = new HttpClient(new FakeBinaryHttpMessageHandler([]));
+        var updater = new Updater(releaseSource, httpClient, isWindows: false);
+        var executablePath = WriteExecutable("chorectl", "old content");
+        var reported = new List<UpdateProgress>();
+
+        await updater.UpdateAsync(CurrentVersion, executablePath, new RecordingProgress(reported));
+
+        Assert.Equal([new UpdateProgress(UpdateStage.CheckingForRelease)], reported);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WhenUpdating_ReportsEachStageInOrder_WithDownloadBytesAgainstContentLength()
+    {
+        var assetBytes = BuildTarGz("chorectl", "new content");
+        var releaseSource = new FakeReleaseSource(new ReleaseInfo(
+            "v2.0.0",
+            [new ReleaseAsset("chorectl-linux-x64.tar.gz", "https://example.test/chorectl-linux-x64.tar.gz")]));
+        var httpClient = new HttpClient(new FakeBinaryHttpMessageHandler(assetBytes));
+        var updater = new Updater(releaseSource, httpClient, isWindows: false);
+        var executablePath = WriteExecutable("chorectl", "old content");
+        var reported = new List<UpdateProgress>();
+
+        await updater.UpdateAsync(CurrentVersion, executablePath, new RecordingProgress(reported));
+
+        Assert.Equal(UpdateStage.CheckingForRelease, reported.First().Stage);
+        Assert.Equal(UpdateStage.ReplacingExecutable, reported.Last().Stage);
+        Assert.Contains(reported, p => p.Stage == UpdateStage.Extracting);
+
+        var downloadUpdates = reported.Where(p => p.Stage == UpdateStage.Downloading).ToList();
+        Assert.NotEmpty(downloadUpdates);
+        Assert.All(downloadUpdates, p => Assert.Equal(assetBytes.Length, p.TotalBytes));
+        Assert.Equal(assetBytes.Length, downloadUpdates.Last().BytesDownloaded);
+    }
+
+    private sealed class RecordingProgress(List<UpdateProgress> reported) : IProgress<UpdateProgress>
+    {
+        public void Report(UpdateProgress value) => reported.Add(value);
+    }
+
     private string WriteExecutable(string fileName, string content)
     {
         var path = Path.Combine(_tempDir, fileName);

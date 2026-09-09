@@ -1,3 +1,4 @@
+using Chorectl.Cli.Rendering.Update;
 using Chorectl.Core.Update;
 using Spectre.Console;
 using Spectre.Console.Cli;
@@ -23,7 +24,8 @@ public sealed class UpdateCommand(Updater updater, IAnsiConsole console) : Async
     /// <summary>Takes the target executable path explicitly, so tests never touch the real running binary.</summary>
     public async Task<int> RunAsync(string executablePath, CancellationToken cancellationToken)
     {
-        var result = await updater.UpdateAsync(CurrentVersion.Value, executablePath, cancellationToken);
+        var result = await UpdateProgressDisplay.RunAsync(console, progress =>
+            updater.UpdateAsync(CurrentVersion.Value, executablePath, progress, cancellationToken));
 
         if (!result.Updated)
         {

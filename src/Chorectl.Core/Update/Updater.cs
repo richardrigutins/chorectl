@@ -18,8 +18,9 @@ public sealed class Updater(IReleaseSource releaseSource, HttpClient httpClient,
 {
     private readonly bool isWindows = isWindows ?? OperatingSystem.IsWindows();
 
-    public async Task<UpdateResult> UpdateAsync(string currentVersion, string executablePath, CancellationToken cancellationToken = default)
+    public async Task<UpdateResult> UpdateAsync(string currentVersion, string executablePath, IProgress<UpdateProgress>? progress = null, CancellationToken cancellationToken = default)
     {
+        progress?.Report(new UpdateProgress(UpdateStage.CheckingForRelease));
         var release = await releaseSource.GetLatestReleaseAsync();
 
         if (!VersionComparer.IsNewer(release.TagName, currentVersion))
@@ -34,7 +35,8 @@ public sealed class Updater(IReleaseSource releaseSource, HttpClient httpClient,
         var tempDir = Directory.CreateTempSubdirectory("chorectl-update-");
         try
         {
-            var extractedBinaryPath = await DownloadAndExtractAsync(asset, tempDir.FullName, cancellationToken);
+            var extractedBinaryPath = await DownloadAndExtractAsync(asset, tempDir.FullName, progress, cancellationToken);
+            progress?.Report(new UpdateProgress(UpdateStage.ReplacingExecutable));
             ReplaceExecutable(extractedBinaryPath, executablePath);
         }
         finally
@@ -57,19 +59,38 @@ public sealed class Updater(IReleaseSource releaseSource, HttpClient httpClient,
         return $"chorectl-{os}-{arch}.tar.gz";
     }
 
-    private async Task<string> DownloadAndExtractAsync(ReleaseAsset asset, string tempDir, CancellationToken cancellationToken)
+    private async Task<string> DownloadAndExtractAsync(ReleaseAsset asset, string tempDir, IProgress<UpdateProgress>? progress, CancellationToken cancellationToken)
     {
         using var response = await httpClient.GetAsync(asset.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         response.EnsureSuccessStatusCode();
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        var totalBytes = response.Content.Headers.ContentLength;
+
+        var buffer = new MemoryStream();
+        await using (var networkStream = await response.Content.ReadAsStreamAsync(cancellationToken))
+        {
+            var chunk = new byte[81920];
+            long bytesRead = 0;
+            progress?.Report(new UpdateProgress(UpdateStage.Downloading, bytesRead, totalBytes));
+
+            int read;
+            while ((read = await networkStream.ReadAsync(chunk, cancellationToken)) > 0)
+            {
+                await buffer.WriteAsync(chunk.AsMemory(0, read), cancellationToken);
+                bytesRead += read;
+                progress?.Report(new UpdateProgress(UpdateStage.Downloading, bytesRead, totalBytes));
+            }
+        }
+
+        buffer.Position = 0;
+        progress?.Report(new UpdateProgress(UpdateStage.Extracting));
 
         if (asset.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
         {
-            ZipFile.ExtractToDirectory(stream, tempDir);
+            ZipFile.ExtractToDirectory(buffer, tempDir);
         }
         else
         {
-            await using var gzip = new GZipStream(stream, CompressionMode.Decompress);
+            await using var gzip = new GZipStream(buffer, CompressionMode.Decompress);
             await TarFile.ExtractToDirectoryAsync(gzip, tempDir, overwriteFiles: true, cancellationToken);
         }
 
