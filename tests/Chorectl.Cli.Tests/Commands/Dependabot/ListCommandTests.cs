@@ -91,6 +91,39 @@ public class ListCommandTests
     }
 
     [Fact]
+    public async Task RunAsync_PrintsFetchSpinnerStatus()
+    {
+        var console = new TestConsole();
+        var restClient = new RestClient(new FakeRepositorySource(
+            new RepositoryInfo("octocat", "sample-repo", IsArchived: false, IsFork: false)));
+        var handler = new FakeHttpMessageHandler(SingleNodeResponse());
+        var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
+        var command = new ListCommand(restClient, graphQlClient, console);
+
+        await command.RunAsync(Settings());
+
+        // The live status region only leaves its last frame behind once StartAsync completes,
+        // so "Discovering repos..." (the first frame) is already gone by the time output is read.
+        Assert.Contains("Fetching Dependabot PRs...", console.Output);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithJson_SuppressesSpinnerStatus()
+    {
+        var console = new TestConsole();
+        var restClient = new RestClient(new FakeRepositorySource(
+            new RepositoryInfo("octocat", "sample-repo", IsArchived: false, IsFork: false)));
+        var handler = new FakeHttpMessageHandler(SingleNodeResponse());
+        var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
+        var command = new ListCommand(restClient, graphQlClient, console);
+
+        await command.RunAsync(Settings(json: true));
+
+        Assert.DoesNotContain("Discovering repos...", console.Output);
+        Assert.DoesNotContain("Fetching Dependabot PRs...", console.Output);
+    }
+
+    [Fact]
     public async Task RunAsync_WithoutVerbose_PrintsNoDiagnostics()
     {
         var console = new TestConsole();

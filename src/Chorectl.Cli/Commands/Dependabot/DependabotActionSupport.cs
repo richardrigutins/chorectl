@@ -34,11 +34,30 @@ internal static class DependabotActionSupport
         DependabotSettings settings,
         CancellationToken cancellationToken)
     {
-        var repos = await restClient.DiscoverReposAsync(settings.Repo);
-        VerboseLog.Write(console, settings.Verbose, settings.Json, $"Discovered {repos.Count} repo(s)");
+        IReadOnlyList<RepositoryInfo> repos = [];
+        IReadOnlyList<DependabotPr> prs = [];
+        IReadOnlyList<string> truncatedRepos = [];
 
-        var (prs, truncatedRepos) = await graphQlClient.FetchDependabotPrsAsync(repos, cancellationToken);
-        VerboseLog.Write(console, settings.Verbose, settings.Json, $"Fetched {prs.Count} Dependabot PR(s)");
+        async Task DiscoverAndFetchAsync(StatusContext? status)
+        {
+            status?.Status("Discovering repos...");
+            repos = await restClient.DiscoverReposAsync(settings.Repo);
+            VerboseLog.Write(console, settings.Verbose, settings.Json, $"Discovered {repos.Count} repo(s)");
+
+            status?.Status("Fetching Dependabot PRs...");
+            (prs, truncatedRepos) = await graphQlClient.FetchDependabotPrsAsync(repos, cancellationToken);
+            VerboseLog.Write(console, settings.Verbose, settings.Json, $"Fetched {prs.Count} Dependabot PR(s)");
+        }
+
+        // --json must stay clean of the spinner, same as every other piece of console output.
+        if (settings.Json)
+        {
+            await DiscoverAndFetchAsync(null);
+        }
+        else
+        {
+            await console.Status().StartAsync("Discovering repos...", DiscoverAndFetchAsync);
+        }
 
         if (!settings.Json && truncatedRepos.Count > 0)
         {
