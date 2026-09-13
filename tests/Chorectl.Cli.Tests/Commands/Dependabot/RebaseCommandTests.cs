@@ -15,8 +15,8 @@ public class RebaseCommandTests
         var (command, console) = CreateCommand(
             commenter,
             [
-                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")),
-                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
             ],
             auditLog: auditLog);
         console.Input.PushKey(ConsoleKey.Enter);
@@ -38,8 +38,8 @@ public class RebaseCommandTests
         var (command, console) = CreateCommand(
             commenter,
             [
-                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")),
-                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
             ],
             auditLog: auditLog);
         console.Input.PushKey(ConsoleKey.Enter);
@@ -59,8 +59,8 @@ public class RebaseCommandTests
         var (command, console) = CreateCommand(
             commenter,
             [
-                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")),
-                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
             ],
             auditLog: auditLog);
         console.Input.PushKey(ConsoleKey.Enter);
@@ -111,9 +111,9 @@ public class RebaseCommandTests
             commenter,
             [
                 SearchResponse(
-                    Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                    Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
                     Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "CLEAN")),
-                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
             ]);
         console.Input.PushKey(ConsoleKey.Enter);
 
@@ -133,9 +133,9 @@ public class RebaseCommandTests
             commenter,
             [
                 SearchResponse(
-                    Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                    Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
                     Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "CLEAN")),
-                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
                 ByNumberResponse(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "CLEAN"),
             ]);
         // Cursor starts on the group header; Down moves to #1 (preselected), Down again to #2 (opt in).
@@ -150,16 +150,16 @@ public class RebaseCommandTests
     }
 
     [Fact]
-    public async Task RunAsync_WithAllAndYes_OnlyActsOnPrsNeedingRebase()
+    public async Task RunAsync_WithAllAndYes_OnlyActsOnConflictingPrs()
     {
         var commenter = new FakePullRequestCommenter();
         var (command, console) = CreateCommand(
             commenter,
             [
                 SearchResponse(
-                    Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
-                    Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "CLEAN")),
-                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                    Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
+                    Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
             ]);
 
         var exitCode = await command.RunAsync(Settings(all: true, yes: true));
@@ -177,9 +177,9 @@ public class RebaseCommandTests
             commenter,
             [
                 SearchResponse(
-                    Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                    Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
                     Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "CLEAN")),
-                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
             ]);
         console.Input.PushKey(ConsoleKey.Enter);
 
@@ -245,7 +245,7 @@ public class RebaseCommandTests
     }
 
     [Fact]
-    public async Task RunAsync_IncludesDirtyAndBehindPrs()
+    public async Task RunAsync_ShowsBehindAndUnstablePrsAsCandidatesButOnlyPreselectsDirtyOnes()
     {
         var commenter = new FakePullRequestCommenter();
         var (command, console) = CreateCommand(
@@ -253,28 +253,31 @@ public class RebaseCommandTests
             [
                 SearchResponse(
                     Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
-                    Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")),
+                    Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                    Node(3, "Bump top-pad from 1.0.0 to 1.0.1", mergeStateStatus: "UNSTABLE")),
                 ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
-                ByNumberResponse(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
             ]);
         console.Input.PushKey(ConsoleKey.Enter);
 
         await command.RunAsync(Settings());
 
-        Assert.Equal([1, 2], commenter.CommentCalls.Select(c => c.Pr.Number).Order());
+        Assert.Contains("right-pad", console.Output);
+        Assert.Contains("top-pad", console.Output);
+        var call = Assert.Single(commenter.CommentCalls);
+        Assert.Equal(1, call.Pr.Number);
     }
 
     [Fact]
-    public async Task RunAsync_ConfirmingDefaults_RequestsRebaseOnEveryPr_SinceAllArePreselected()
+    public async Task RunAsync_ConfirmingDefaults_RequestsRebaseOnEveryConflictingPr_SinceTheyrePreselected()
     {
         var commenter = new FakePullRequestCommenter();
         var (command, console) = CreateCommand(
             commenter,
             [
                 SearchResponse(
-                    Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                    Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
                     Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY")),
-                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
                 ByNumberResponse(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
             ]);
         console.Input.PushKey(ConsoleKey.Enter);
@@ -296,10 +299,10 @@ public class RebaseCommandTests
             commenter,
             [
                 SearchResponse(
-                    Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND",
+                    Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY",
                         body: "Dependabot is rebasing this PR due to a merge conflict."),
-                    Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")),
-                ByNumberResponse(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                    Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY")),
+                ByNumberResponse(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
             ]);
         console.Input.PushKey(ConsoleKey.Enter);
 
@@ -316,8 +319,7 @@ public class RebaseCommandTests
         var (command, console) = CreateCommand(
             commenter,
             SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")));
-        // Cursor starts on the repo group header (pre-checked); space deselects everything under it.
-        console.Input.PushKey(ConsoleKey.Spacebar);
+        // BEHIND is a candidate but isn't preselected - confirming immediately selects nothing.
         console.Input.PushKey(ConsoleKey.Enter);
 
         var exitCode = await command.RunAsync(Settings());
@@ -334,7 +336,7 @@ public class RebaseCommandTests
         var (command, console) = CreateCommand(
             commenter,
             [
-                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")),
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY")),
                 "{ \"data\": { \"repository\": { \"pullRequest\": null } } }",
             ]);
         console.Input.PushKey(ConsoleKey.Enter);
@@ -354,8 +356,8 @@ public class RebaseCommandTests
         var (command, console) = CreateCommand(
             commenter,
             [
-                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")),
-                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
             ]);
         console.Input.PushKey(ConsoleKey.Enter);
 
@@ -374,8 +376,8 @@ public class RebaseCommandTests
         var (command, console) = CreateCommand(
             commenter,
             [
-                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")),
-                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
             ]);
         console.Input.PushKey(ConsoleKey.Enter);
 
@@ -394,8 +396,8 @@ public class RebaseCommandTests
         var (command, console) = CreateCommand(
             commenter,
             [
-                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")),
-                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
             ],
             delay: (wait, _) =>
             {
@@ -421,10 +423,10 @@ public class RebaseCommandTests
             commenter,
             [
                 SearchResponse(
-                    Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
-                    Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")),
-                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
-                ByNumberResponse(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                    Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
+                    Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
+                ByNumberResponse(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
             ],
             delay: NoOpDelay,
             maxBackoffSeconds: 3);
@@ -452,8 +454,8 @@ public class RebaseCommandTests
         var (command, console) = CreateCommand(
             commenter,
             [
-                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")),
-                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
             ]);
         console.Input.PushKey(ConsoleKey.Enter);
 
@@ -472,10 +474,10 @@ public class RebaseCommandTests
             commenter,
             [
                 SearchResponse(
-                    Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
-                    Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")),
-                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
-                ByNumberResponse(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                    Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
+                    Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
+                ByNumberResponse(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
             ]);
         console.Input.PushKey(ConsoleKey.Enter);
 
@@ -548,8 +550,8 @@ public class RebaseCommandTests
             new RepositoryInfo("octocat", "other-repo", IsArchived: false, IsFork: false));
         var restClient = new RestClient(source);
         var handler = new FakeHttpMessageHandler(
-            SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")),
-            ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"));
+            SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY")),
+            ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"));
         var graphQlClient = new GraphQlClient(new HttpClient(handler) { BaseAddress = new Uri("https://api.github.com/") });
         var console = new TestConsole().Interactive();
         console.Input.PushKey(ConsoleKey.Enter);
@@ -588,10 +590,10 @@ public class RebaseCommandTests
             commenter,
             [
                 SearchResponse(
-                    Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND",
+                    Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY",
                         body: "Dependabot is rebasing this PR due to a merge conflict."),
-                    Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")),
-                ByNumberResponse(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                    Node(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY")),
+                ByNumberResponse(2, "Bump right-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
             ]);
 
         var exitCode = await command.RunAsync(Settings(yes: true));
@@ -608,8 +610,8 @@ public class RebaseCommandTests
         var (command, console) = CreateCommand(
             commenter,
             [
-                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")),
-                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
             ]);
         console.Input.PushKey(ConsoleKey.Enter);
 
@@ -628,8 +630,8 @@ public class RebaseCommandTests
         var (command, console) = CreateCommand(
             commenter,
             [
-                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND")),
-                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND"),
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY")),
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY"),
             ]);
 
         var exitCode = await command.RunAsync(Settings(json: true));
@@ -647,9 +649,9 @@ public class RebaseCommandTests
         var (command, console) = CreateCommand(
             commenter,
             [
-                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND",
+                SearchResponse(Node(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY",
                     body: "Bumps left-pad from 1.0.0 to 1.0.1.\\n<details><summary>Changelog</summary>...</details>")),
-                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "BEHIND",
+                ByNumberResponse(1, "Bump left-pad from 1.0.0 to 1.0.1", mergeStateStatus: "DIRTY",
                     body: "Bumps left-pad from 1.0.0 to 1.0.1.\\n<details><summary>Changelog</summary>...</details>"),
             ]);
 

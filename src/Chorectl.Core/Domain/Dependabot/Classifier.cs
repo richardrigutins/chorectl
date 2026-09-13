@@ -19,9 +19,15 @@ public static class Classifier
         && pr.MergeStateStatus != MergeStateStatuses.Dirty
         && !pr.IsDraft;
 
-    /// <summary>Whether a PR needs a rebase before it can be merged.</summary>
+    /// <summary>
+    /// Whether a PR needs a rebase before it can be merged. Includes <c>UNSTABLE</c> alongside
+    /// <c>DIRTY</c>/<c>BEHIND</c>: <c>mergeStateStatus</c> is a single rolled-up value, and a
+    /// failing required check reports <c>UNSTABLE</c> even when the PR is also behind the base
+    /// branch - <c>BEHIND</c> never surfaces in that case, so a PR can be genuinely behind while
+    /// this field alone can't distinguish that from a real, unrelated CI failure.
+    /// </summary>
     public static bool NeedsRebase(DependabotPr pr) =>
-        pr.MergeStateStatus is MergeStateStatuses.Dirty or MergeStateStatuses.Behind;
+        pr.MergeStateStatus is MergeStateStatuses.Dirty or MergeStateStatuses.Behind or MergeStateStatuses.Unstable;
 
     /// <summary>Whether a PR is blocked on a required review.</summary>
     public static bool NeedsApproval(DependabotPr pr) =>
@@ -47,6 +53,19 @@ public static class Classifier
     /// </summary>
     public static bool DefaultSelectedForApproval(DependabotPr pr, DefaultSelectConfig defaultSelect) =>
         MatchesRiskTier(pr, defaultSelect);
+
+    /// <summary>
+    /// Whether a PR should be pre-selected on the rebase screen. Narrower than
+    /// <see cref="NeedsRebase"/>: only <c>DIRTY</c> (an actual conflict) is a guaranteed reason to
+    /// rebase. <c>BEHIND</c> and <c>UNSTABLE</c> stay candidates - visible and selectable - but not
+    /// pre-checked, since neither guarantees a rebase is actually needed (a <c>BEHIND</c> PR may
+    /// merge cleanly regardless, same reasoning as <see cref="IsReadyToMerge"/>; an
+    /// <c>UNSTABLE</c> one might just have a real, unrelated CI failure a rebase won't fix). A PR
+    /// already carrying Dependabot's rebase-in-progress banner is never pre-checked either -
+    /// requesting another would be redundant.
+    /// </summary>
+    public static bool DefaultSelectedForRebase(DependabotPr pr) =>
+        pr.MergeStateStatus == MergeStateStatuses.Dirty && !HasRebaseBanner(pr);
 
     private static bool MatchesRiskTier(DependabotPr pr, DefaultSelectConfig defaultSelect) =>
         IsSemverLevelAllowed(pr.SemverLevel, defaultSelect)

@@ -91,13 +91,13 @@ chorectl dependabot merge --yes --json   # for cron/automation
 
 ### `chorectl dependabot rebase`
 
-Shows a checkbox selection of PRs that need a rebase (conflicting or behind the base branch), pre-selected, and posts `@dependabot rebase` on each one you confirm. Doesn't wait for the rebase to finish - it reports "requested" and exits.
+Shows a checkbox selection of PRs that need a rebase - conflicting, behind the base branch, or unstable (which GitHub also reports when a PR is behind but has a failing check, since it only exposes one rolled-up state) - and posts `@dependabot rebase` on each one you confirm. Doesn't wait for the rebase to finish - it reports "requested" and exits.
 
-PRs that don't need a rebase are not shown, unless `--all` is used.
+Only actually-conflicting PRs are pre-selected; behind/unstable ones are shown but require explicit opt-in, since neither guarantees a rebase is actually needed. PRs that don't need a rebase at all are not shown, unless `--all` is used.
 
 ```sh
 chorectl dependabot rebase
-chorectl dependabot rebase --all   # widen to every open PR, e.g. to force a CI re-run; only PRs that actually need a rebase stay pre-selected
+chorectl dependabot rebase --all   # widen to every open PR, e.g. to force a CI re-run; only conflicting PRs stay pre-selected
 ```
 
 ### `chorectl dependabot approve`

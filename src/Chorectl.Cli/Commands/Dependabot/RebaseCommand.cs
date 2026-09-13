@@ -32,7 +32,7 @@ public sealed class RebaseCommand(
     public sealed class Settings : ActionSettings
     {
         [CommandOption("--all")]
-        [Description("Widen the candidate set to every open Dependabot PR, not just ones needing a rebase. PRs that need one stay pre-selected; the rest require explicit opt-in.")]
+        [Description("Widen the candidate set to every open Dependabot PR, not just ones needing a rebase. PRs actually conflicting stay pre-selected; the rest require explicit opt-in.")]
         public bool All { get; init; }
     }
 
@@ -63,7 +63,7 @@ public sealed class RebaseCommand(
 
         // --json can't render an interactive prompt, so it implies --yes for action commands.
         var selected = settings.Yes || settings.Json
-            ? candidates.Where(pr => Classifier.NeedsRebase(pr) && !Classifier.HasRebaseBanner(pr)).ToList()
+            ? candidates.Where(Classifier.DefaultSelectedForRebase).ToList()
             : SelectionScreens.PromptRebase(console, candidates);
 
         if (selected.Count == 0)
