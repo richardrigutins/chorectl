@@ -17,15 +17,15 @@ public static class SelectionScreens
         Prompt(console, "Select PRs to merge [grey](space to toggle, enter to confirm)[/]", readyPrs, pr => Classifier.DefaultSelected(pr, defaultSelect));
 
     /// <summary>
-    /// Prompts the user to select PRs to request a rebase for, grouped by repo. PRs that need a
-    /// rebase are pre-selected by default - except one already being rebased by Dependabot, which
-    /// is left unchecked since requesting another one would be redundant. With <c>--all</c>, the
-    /// candidate list widens to every open PR, but only ones that actually need a rebase are
-    /// pre-selected - the rest require explicit opt-in.
+    /// Prompts the user to select PRs to request a rebase for, grouped by repo. Only PRs that are
+    /// actually conflicting (<see cref="Classifier.DefaultSelectedForRebase"/>) are pre-selected by
+    /// default - PRs that are merely behind or unstable stay candidates but require explicit
+    /// opt-in, since neither guarantees a rebase is actually needed. With <c>--all</c>, the
+    /// candidate list widens to every open PR, but pre-selection rules stay the same.
     /// </summary>
     public static IReadOnlyList<DependabotPr> PromptRebase(IAnsiConsole console, IReadOnlyList<DependabotPr> candidatePrs) =>
         Prompt(console, "Select PRs to rebase [grey](space to toggle, enter to confirm)[/]", candidatePrs,
-            pr => Classifier.NeedsRebase(pr) && !Classifier.HasRebaseBanner(pr));
+            Classifier.DefaultSelectedForRebase);
 
     /// <summary>
     /// Prompts the user to select PRs to approve, grouped by repo, with the same risk-tier

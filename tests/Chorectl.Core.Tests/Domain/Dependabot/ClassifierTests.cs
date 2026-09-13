@@ -62,11 +62,11 @@ public class ClassifierTests
     [Theory]
     [InlineData("DIRTY", true)]
     [InlineData("BEHIND", true)]
+    [InlineData("UNSTABLE", true)]
     [InlineData("CLEAN", false)]
     [InlineData("BLOCKED", false)]
-    [InlineData("UNSTABLE", false)]
     [InlineData("UNKNOWN", false)]
-    public void NeedsRebase_IsTrueOnlyForDirtyOrBehind(string mergeStateStatus, bool expected)
+    public void NeedsRebase_IsTrueForDirtyBehindOrUnstable(string mergeStateStatus, bool expected)
     {
         var pr = CreatePr(mergeStateStatus: mergeStateStatus);
 
@@ -231,5 +231,26 @@ public class ClassifierTests
         var pr = CreatePr(body: body);
 
         Assert.Equal(expected, Classifier.HasRebaseBanner(pr));
+    }
+
+    [Theory]
+    [InlineData("DIRTY", true)]
+    [InlineData("BEHIND", false)]
+    [InlineData("UNSTABLE", false)]
+    [InlineData("CLEAN", false)]
+    public void DefaultSelectedForRebase_IsTrueOnlyForDirty_SinceBehindAndUnstableDontGuaranteeARebaseIsNeeded(
+        string mergeStateStatus, bool expected)
+    {
+        var pr = CreatePr(mergeStateStatus: mergeStateStatus);
+
+        Assert.Equal(expected, Classifier.DefaultSelectedForRebase(pr));
+    }
+
+    [Fact]
+    public void DefaultSelectedForRebase_IsFalseForADirtyPrAlreadyCarryingTheRebaseBanner()
+    {
+        var pr = CreatePr(mergeStateStatus: "DIRTY", body: "Dependabot is rebasing this PR due to a merge conflict.");
+
+        Assert.False(Classifier.DefaultSelectedForRebase(pr));
     }
 }
