@@ -1,5 +1,8 @@
 using Chorectl.Cli.Infrastructure;
+using Microsoft.Extensions.DependencyInjection;
+using Spectre.Console.Cli;
 using Spectre.Console.Cli.Testing;
+using Spectre.Console.Testing;
 
 namespace Chorectl.Cli.Tests.Infrastructure;
 
@@ -83,6 +86,38 @@ public class AppConfigurationTests
         Assert.Contains("USAGE", result.Output);
         Assert.DoesNotContain("Unknown command", result.Output);
         Assert.NotEqual(0, result.ExitCode);
+    }
+
+    // A command whose construction itself fails - standing in for a real one, e.g. a malformed
+    // config file blowing up while a command's constructor reads it - lets this assert on
+    // AppConfiguration's own exception handling instead of on a specific failure mode. Goes
+    // through the real TypeRegistrar/TypeResolver (backed by Microsoft.Extensions.DependencyInjection,
+    // like CompositionRoot), not CommandAppTester's default activator: that's what unwraps the
+    // constructor's exception onto CommandRuntimeException.InnerException directly, instead of
+    // leaving it one level deeper inside a reflection TargetInvocationException.
+    [Fact]
+    public async Task CommandConstructorFailure_ShowsTheUnderlyingMessage_NotSpectresGenericWrapper()
+    {
+        var console = new TestConsole();
+        var app = new CommandApp(new TypeRegistrar(new ServiceCollection()));
+        app.Configure(config =>
+        {
+            AppConfiguration.Configure(config);
+            config.AddCommand<ThrowingCommand>("throwing");
+            config.ConfigureConsole(console);
+        });
+
+        await app.RunAsync(["throwing"]);
+
+        Assert.Contains("boom", console.Output);
+        Assert.DoesNotContain("Could not resolve type", console.Output);
+    }
+
+    private sealed class ThrowingCommand : Command<EmptyCommandSettings>
+    {
+        public ThrowingCommand() => throw new InvalidOperationException("boom");
+
+        protected override int Execute(CommandContext context, EmptyCommandSettings settings, CancellationToken cancellationToken) => 0;
     }
 
     private static async Task<CommandAppResult> RunAsync(params string[] args)

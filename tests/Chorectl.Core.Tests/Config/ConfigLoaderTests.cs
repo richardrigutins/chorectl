@@ -56,6 +56,16 @@ public class ConfigLoaderTests : IDisposable
     }
 
     [Fact]
+    public void Load_WithUnknownKey_IgnoresItAndReturnsRemainingValues()
+    {
+        File.WriteAllText(ConfigPath, "git_hub_host: ''\nmerge_method: rebase\n");
+
+        var config = new ConfigLoader(ConfigPath).Load();
+
+        Assert.Equal("rebase", config.MergeMethod);
+    }
+
+    [Fact]
     public void Load_WithExplicitNullExcludeRepos_NormalizesToEmptyList()
     {
         File.WriteAllText(ConfigPath, "exclude_repos:\n");
