@@ -25,6 +25,7 @@ public sealed class ConfigGetCommand(ConfigLoader configLoader, IAnsiConsole con
 
     private static IEnumerable<(string Key, string Value)> Flatten(ChorectlConfig config)
     {
+        yield return ("github_host", config.GitHubHost.Length == 0 ? "(github.com)" : config.GitHubHost);
         yield return ("exclude_repos", config.ExcludeRepos.Count == 0 ? "(none)" : string.Join(", ", config.ExcludeRepos));
         yield return ("include_forks", Format(config.IncludeForks));
         yield return ("merge_method", config.MergeMethod);

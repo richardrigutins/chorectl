@@ -20,6 +20,7 @@ public class ConfigGetCommandTests : IDisposable
         var exitCode = command.Run();
 
         Assert.Equal(0, exitCode);
+        Assert.Contains("github_host: (github.com)", console.Output);
         Assert.Contains("exclude_repos: (none)", console.Output);
         Assert.Contains("include_forks: false", console.Output);
         Assert.Contains("merge_method: squash", console.Output);
@@ -37,10 +38,11 @@ public class ConfigGetCommandTests : IDisposable
     public void Run_WithCustomizedConfig_PrintsResolvedValues()
     {
         var (command, console) = CreateCommand();
-        new ConfigLoader(ConfigPath).Save(new ChorectlConfig { ExcludeRepos = ["foo", "bar"], MergeMethod = "rebase" });
+        new ConfigLoader(ConfigPath).Save(new ChorectlConfig { GitHubHost = "github.mycompany.com", ExcludeRepos = ["foo", "bar"], MergeMethod = "rebase" });
 
         command.Run();
 
+        Assert.Contains("github_host: github.mycompany.com", console.Output);
         Assert.Contains("exclude_repos: foo, bar", console.Output);
         Assert.Contains("merge_method: rebase", console.Output);
     }

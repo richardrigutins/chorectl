@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using Chorectl.Core.Audit;
 using Chorectl.Core.Config;
 using Chorectl.Core.GitHub;
+using Chorectl.Core.Process;
 using Chorectl.Core.Update;
 using Microsoft.Extensions.DependencyInjection;
 using Octokit;
@@ -20,14 +21,31 @@ namespace Chorectl.Cli.Infrastructure;
 /// </summary>
 public static class CompositionRoot
 {
+    private static readonly Octokit.ProductHeaderValue ProductHeader = new("chorectl");
+
+    /// <param name="authenticator">
+    /// <see langword="null"/> to use the real <see cref="GhCliAuthenticator"/>, targeting
+    /// <see cref="ChorectlConfig.GitHubHost"/> - only tests substitute a fake here.
+    /// </param>
     /// <param name="updateCheckCachePath">
     /// Overridable for tests - <see cref="UpdateChecker"/> writes here on every due check (even a
     /// failed one, see its own doc comment), so tests must never let this default to
     /// <see cref="UpdateChecker.DefaultCachePath"/> and pollute the real one.
     /// </param>
-    public static async Task<int> RunAsync(IGitHubAuthenticator authenticator, string[] args, IAnsiConsole console, string? updateCheckCachePath = null)
+    /// <param name="releaseAuthenticator">
+    /// Authenticates chorectl's own release check (see <see cref="BuildReleaseSource"/>) -
+    /// deliberately separate from <paramref name="authenticator"/>, since that check always
+    /// targets github.com regardless of <see cref="ChorectlConfig.GitHubHost"/>. <see
+    /// langword="null"/> to use the real <see cref="GhCliAuthenticator"/> pinned to github.com;
+    /// only tests substitute a fake here.
+    /// </param>
+    public static async Task<int> RunAsync(
+        IGitHubAuthenticator? authenticator,
+        string[] args,
+        IAnsiConsole console,
+        string? updateCheckCachePath = null,
+        IGitHubAuthenticator? releaseAuthenticator = null)
     {
-        var cachingAuthenticator = new CachingGitHubAuthenticator(authenticator);
         var configLoader = new ConfigLoader(ConfigLoader.DefaultPath);
 
         // Lazy, and shared across every registration that needs it, so a malformed config file
@@ -36,14 +54,18 @@ public static class CompositionRoot
         // `config set`, and never before app.Run() has a chance to catch it.
         var lazyConfig = new Lazy<ChorectlConfig>(configLoader.Load);
 
+        // The closure here isn't invoked until GetToken() actually runs, so this stays just as
+        // lazy about config as everything else in this method.
+        var cachingAuthenticator = new CachingGitHubAuthenticator(
+            authenticator ?? new GhCliAuthenticator(new ProcessRunner(), () => lazyConfig.Value.GitHubHost));
+
         var services = new ServiceCollection();
 
         services.AddSingleton(console);
         services.AddSingleton(configLoader);
         services.AddSingleton(_ => lazyConfig.Value);
 
-        var githubClient = new GitHubClient(new Octokit.ProductHeaderValue("chorectl"), new GitHubCredentialStore(cachingAuthenticator));
-        services.AddSingleton<IGitHubClient>(githubClient);
+        services.AddSingleton<IGitHubClient>(_ => BuildGitHubClient(new GitHubCredentialStore(cachingAuthenticator), lazyConfig.Value.GitHubHost));
         services.AddSingleton<IRepositorySource, OctokitRepositorySource>();
         services.AddSingleton<IPullRequestMerger>(provider =>
             new OctokitPullRequestMerger(provider.GetRequiredService<IGitHubClient>(), lazyConfig.Value.MergeMethod));
@@ -58,16 +80,21 @@ public static class CompositionRoot
         {
             var httpClient = new HttpClient(new GitHubAuthenticationHandler(cachingAuthenticator) { InnerHandler = new HttpClientHandler() })
             {
-                BaseAddress = new Uri("https://api.github.com/"),
+                BaseAddress = GitHubHost.GraphQlBaseUri(lazyConfig.Value.GitHubHost),
             };
             httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("chorectl", "1.0"));
             return new GraphQlClient(httpClient, lazyConfig.Value.MaxBackoffSeconds);
         });
 
-        // Shares one OctokitReleaseSource (and the authenticated githubClient above, so the check
-        // rides the higher authenticated rate limit) between the startup update check below and a
+        // chorectl's own release check always targets github.com, independent of the configured
+        // target host (ChorectlConfig.GitHubHost) - a GitHub Enterprise Server instance has no
+        // relationship to chorectl's own releases, and a GHE-scoped token wouldn't authenticate
+        // against github.com anyway. Shared between the startup update check below and a
         // `chorectl update` command's own Updater.
-        var releaseSource = new OctokitReleaseSource(githubClient);
+        // Always authenticates separately from the target client, even when the target
+        // host already is github.com (one extra `gh auth token` call) - simplest correct option,
+        // revisit only if that overhead is measured to matter.
+        var releaseSource = BuildReleaseSource(releaseAuthenticator);
         services.AddSingleton<IReleaseSource>(releaseSource);
         services.AddSingleton(_ => new Updater(releaseSource, new HttpClient()));
 
@@ -89,6 +116,21 @@ public static class CompositionRoot
         }
 
         return await app.RunAsync(args);
+    }
+
+    private static GitHubClient BuildGitHubClient(ICredentialStore credentialStore, string? host)
+    {
+        var baseUri = GitHubHost.RestApiBaseUri(host);
+        return baseUri is null
+            ? new GitHubClient(ProductHeader, credentialStore)
+            : new GitHubClient(ProductHeader, credentialStore, baseUri);
+    }
+
+    private static OctokitReleaseSource BuildReleaseSource(IGitHubAuthenticator? releaseAuthenticator)
+    {
+        var authenticator = new CachingGitHubAuthenticator(
+            releaseAuthenticator ?? new GhCliAuthenticator(new ProcessRunner(), () => "github.com"));
+        return new OctokitReleaseSource(new GitHubClient(ProductHeader, new GitHubCredentialStore(authenticator)));
     }
 
     // A cheap, args-only gate that runs before lazyConfig or the authenticator are ever touched,

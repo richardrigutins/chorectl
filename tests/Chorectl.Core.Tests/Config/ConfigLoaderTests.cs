@@ -17,6 +17,7 @@ public class ConfigLoaderTests : IDisposable
 
         var config = loader.Load();
 
+        Assert.Equal("", config.GitHubHost);
         Assert.Empty(config.ExcludeRepos);
         Assert.False(config.IncludeForks);
         Assert.Equal("squash", config.MergeMethod);
@@ -123,6 +124,7 @@ public class ConfigLoaderTests : IDisposable
         var loader = new ConfigLoader(ConfigPath);
         var config = new ChorectlConfig
         {
+            GitHubHost = "github.mycompany.com",
             ExcludeRepos = ["some-repo"],
             IncludeForks = true,
             MergeMethod = "rebase",
@@ -136,6 +138,7 @@ public class ConfigLoaderTests : IDisposable
         loader.Save(config);
         var reloaded = loader.Load();
 
+        Assert.Equal(config.GitHubHost, reloaded.GitHubHost);
         Assert.Equal(config.ExcludeRepos, reloaded.ExcludeRepos);
         Assert.Equal(config.IncludeForks, reloaded.IncludeForks);
         Assert.Equal(config.MergeMethod, reloaded.MergeMethod);
@@ -162,6 +165,7 @@ public class ConfigLoaderTests : IDisposable
     {
         var loader = new ConfigLoader(ConfigPath);
 
+        loader.SetValue("github_host", "github.mycompany.com");
         loader.SetValue("exclude_repos", "foo,bar");
         loader.SetValue("include_forks", "true");
         loader.SetValue("merge_method", "rebase");
@@ -175,6 +179,7 @@ public class ConfigLoaderTests : IDisposable
         loader.SetValue("default_select.grouped", "true");
         var config = loader.Load();
 
+        Assert.Equal("github.mycompany.com", config.GitHubHost);
         Assert.Equal(["foo", "bar"], config.ExcludeRepos);
         Assert.True(config.IncludeForks);
         Assert.Equal("rebase", config.MergeMethod);
@@ -186,6 +191,31 @@ public class ConfigLoaderTests : IDisposable
         Assert.False(config.DefaultSelect.Minor);
         Assert.True(config.DefaultSelect.Major);
         Assert.True(config.DefaultSelect.Grouped);
+    }
+
+    [Theory]
+    [InlineData("github.mycompany.com", "github.mycompany.com")]
+    [InlineData("https://github.mycompany.com", "github.mycompany.com")]
+    [InlineData("https://github.mycompany.com/", "github.mycompany.com")]
+    [InlineData("", "")]
+    [InlineData("  ", "")]
+    public void SetValue_WithGitHubHost_NormalizesSchemeAndTrailingSlash(string value, string expected)
+    {
+        var loader = new ConfigLoader(ConfigPath);
+
+        var config = loader.SetValue("github_host", value);
+
+        Assert.Equal(expected, config.GitHubHost);
+    }
+
+    [Theory]
+    [InlineData("github.mycompany.com/api/v3")]
+    [InlineData("github my company.com")]
+    public void SetValue_WithAnInvalidGitHubHost_ThrowsArgumentException(string value)
+    {
+        var loader = new ConfigLoader(ConfigPath);
+
+        Assert.Throws<ArgumentException>(() => loader.SetValue("github_host", value));
     }
 
     [Fact]

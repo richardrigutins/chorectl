@@ -7,6 +7,8 @@ namespace Chorectl.Core.Config;
 /// </summary>
 public sealed record ChorectlConfig
 {
+    /// <summary>Bare hostname of a GitHub Enterprise Server instance, or "" to target github.com.</summary>
+    public string GitHubHost { get; init; } = "";
     public List<string> ExcludeRepos { get; init; } = [];
     public bool IncludeForks { get; init; }
     public string MergeMethod { get; init; } = "squash";

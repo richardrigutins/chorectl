@@ -52,4 +52,39 @@ public class GhCliAuthenticatorTests
 
         Assert.Equal("gho_faketoken123", token);
     }
+
+    // FakeProcessRunner throws if GetToken ends up running arguments nobody registered a response
+    // for, so a passing test here already proves exactly which arguments were used - no need to
+    // separately record and assert on the commands run.
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("github.com")]
+    public void GetToken_ForTheDefaultHost_NeverPassesHostname(string? host)
+    {
+        var runner = new FakeProcessRunner();
+        runner.SetResponse("--version", new ProcessResult(0, "gh version 2.40.1 (2023-12-13)", ""));
+        runner.SetResponse("auth status", new ProcessResult(0, "", "Logged in to github.com as octocat"));
+        runner.SetResponse("auth token", new ProcessResult(0, "gho_faketoken123", ""));
+        var auth = new GhCliAuthenticator(runner, () => host);
+
+        var token = auth.GetToken();
+
+        Assert.Equal("gho_faketoken123", token);
+    }
+
+    [Fact]
+    public void GetToken_ForAnEnterpriseHost_PassesHostnameToAuthStatusAndAuthToken()
+    {
+        var runner = new FakeProcessRunner();
+        runner.SetResponse("--version", new ProcessResult(0, "gh version 2.40.1 (2023-12-13)", ""));
+        runner.SetResponse("auth status --hostname github.mycompany.com", new ProcessResult(0, "", "Logged in to github.mycompany.com as octocat"));
+        runner.SetResponse("auth token --hostname github.mycompany.com", new ProcessResult(0, "ghe_faketoken123", ""));
+        var auth = new GhCliAuthenticator(runner, () => "github.mycompany.com");
+
+        var token = auth.GetToken();
+
+        Assert.Equal("ghe_faketoken123", token);
+    }
 }

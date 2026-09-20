@@ -31,6 +31,20 @@ public class CompositionRootTests : IDisposable
     }
 
     [Fact]
+    public async Task Run_WithNullAuthenticator_AndHelpFlag_UsesTheRealGhCliAuthenticatorWithoutCrashing()
+    {
+        // A null authenticator makes RunAsync build a real GhCliAuthenticator internally (the
+        // production path Program.cs uses) - --help must still never touch it, or config, even
+        // though gh itself may not be installed/authenticated in the test environment.
+        var console = new TestConsole();
+
+        var exitCode = await CompositionRoot.RunAsync(null, ["--help"], console, UpdateCheckCachePath);
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("USAGE", console.Output);
+    }
+
+    [Fact]
     public async Task Run_WithVersionFlag_PrintsTheVersionAndExits_WithoutCallingTheAuthenticator()
     {
         var authenticator = new FakeGitHubAuthenticator(new GitHubAuthException("gh is not authenticated"));
@@ -73,10 +87,12 @@ public class CompositionRootTests : IDisposable
     [Fact]
     public async Task Run_ConfigGet_TriggersTheUpdateCheck_WhichFailsSilentlyAndNeverBreaksTheRealCommand()
     {
+        // The release check authenticates separately from the target host (see CompositionRoot's
+        // releaseAuthenticator doc comment), so it's passed the same fake here to observe it too.
         var authenticator = new FakeGitHubAuthenticator(new GitHubAuthException("gh is not authenticated"));
         var console = new TestConsole();
 
-        var exitCode = await CompositionRoot.RunAsync(authenticator, ["config", "get"], console, UpdateCheckCachePath);
+        var exitCode = await CompositionRoot.RunAsync(authenticator, ["config", "get"], console, UpdateCheckCachePath, releaseAuthenticator: authenticator);
 
         Assert.True(authenticator.WasCalled);
         Assert.Equal(0, exitCode);
