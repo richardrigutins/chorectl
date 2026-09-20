@@ -23,23 +23,35 @@ public static class CompositionRoot
 {
     private static readonly Octokit.ProductHeaderValue ProductHeader = new("chorectl");
 
+    /// <summary>
+    /// Runs the CLI with the real <c>gh</c>-backed authenticators, targeting
+    /// <see cref="ChorectlConfig.GitHubHost"/> for everything except chorectl's own update check,
+    /// which always targets github.com.
+    /// </summary>
+    /// <returns>The process exit code.</returns>
+    public static Task<int> RunAsync(string[] args, IAnsiConsole console) =>
+        RunAsync(authenticator: null, args, console);
+
+    /// <summary>
+    /// The real entry point's implementation, with every dependency that would otherwise touch
+    /// <c>gh</c> or the developer's real files overridable for tests.
+    /// </summary>
     /// <param name="authenticator">
     /// <see langword="null"/> to use the real <see cref="GhCliAuthenticator"/>, targeting
-    /// <see cref="ChorectlConfig.GitHubHost"/> - only tests substitute a fake here.
+    /// <see cref="ChorectlConfig.GitHubHost"/>.
     /// </param>
     /// <param name="updateCheckCachePath">
-    /// Overridable for tests - <see cref="UpdateChecker"/> writes here on every due check (even a
-    /// failed one, see its own doc comment), so tests must never let this default to
+    /// <see cref="UpdateChecker"/> writes here on every due check (even a failed one, see its own
+    /// doc comment), so tests must never let this default to
     /// <see cref="UpdateChecker.DefaultCachePath"/> and pollute the real one.
     /// </param>
     /// <param name="releaseAuthenticator">
-    /// Authenticates chorectl's own release check (see <see cref="BuildReleaseSource"/>) -
+    /// Authenticates chorectl's own release check (see <see cref="BuildReleaseClient"/>) -
     /// deliberately separate from <paramref name="authenticator"/>, since that check always
     /// targets github.com regardless of <see cref="ChorectlConfig.GitHubHost"/>. <see
-    /// langword="null"/> to use the real <see cref="GhCliAuthenticator"/> pinned to github.com;
-    /// only tests substitute a fake here.
+    /// langword="null"/> to use the real <see cref="GhCliAuthenticator"/> pinned to github.com.
     /// </param>
-    public static async Task<int> RunAsync(
+    internal static async Task<int> RunAsync(
         IGitHubAuthenticator? authenticator,
         string[] args,
         IAnsiConsole console,
@@ -54,6 +66,51 @@ public static class CompositionRoot
         // `config set`, and never before app.Run() has a chance to catch it.
         var lazyConfig = new Lazy<ChorectlConfig>(configLoader.Load);
 
+        var services = BuildServices(authenticator, console, configLoader, lazyConfig);
+
+        // chorectl's own release check always targets github.com, independent of the configured
+        // target host (ChorectlConfig.GitHubHost) - a GitHub Enterprise Server instance has no
+        // relationship to chorectl's own releases, and a GHE-scoped token wouldn't authenticate
+        // against github.com anyway. Shared between the startup update check below and a
+        // `chorectl update` command's own Updater.
+        // Always authenticates separately from the target client, even when the target
+        // host already is github.com (one extra `gh auth token` call) - simplest correct option,
+        // revisit only if that overhead is measured to matter.
+        var releaseSource = new OctokitReleaseSource(BuildReleaseClient(releaseAuthenticator));
+        services.AddSingleton<IReleaseSource>(releaseSource);
+        services.AddSingleton(_ => new Updater(releaseSource, new HttpClient()));
+
+        var app = new CommandApp(new TypeRegistrar(services));
+        app.Configure(cli =>
+        {
+            AppConfiguration.Configure(cli);
+            cli.ConfigureConsole(console);
+        });
+
+        // Best-effort, and cheap even when there's nothing to clean up - runs for every invocation,
+        // including --help, unlike the update check below.
+        Updater.CleanupPreviousVersion(Environment.ProcessPath ?? string.Empty);
+
+        if (ShouldCheckForUpdate(args))
+        {
+            var updateChecker = new UpdateChecker(releaseSource, updateCheckCachePath ?? UpdateChecker.DefaultCachePath);
+            await TryNotifyOfUpdateAsync(updateChecker, lazyConfig, console);
+        }
+
+        return await app.RunAsync(args);
+    }
+
+    /// <param name="graphQlInnerHandler">
+    /// Overridable for tests, so they can observe the GraphQL requests this wiring produces
+    /// without a real network call.
+    /// </param>
+    internal static ServiceCollection BuildServices(
+        IGitHubAuthenticator? authenticator,
+        IAnsiConsole console,
+        ConfigLoader configLoader,
+        Lazy<ChorectlConfig> lazyConfig,
+        HttpMessageHandler? graphQlInnerHandler = null)
+    {
         // The closure here isn't invoked until GetToken() actually runs, so this stays just as
         // lazy about config as everything else in this method.
         var cachingAuthenticator = new CachingGitHubAuthenticator(
@@ -78,7 +135,7 @@ public static class CompositionRoot
             lazyConfig.Value.IncludeForks));
         services.AddSingleton(_ =>
         {
-            var httpClient = new HttpClient(new GitHubAuthenticationHandler(cachingAuthenticator) { InnerHandler = new HttpClientHandler() })
+            var httpClient = new HttpClient(new GitHubAuthenticationHandler(cachingAuthenticator) { InnerHandler = graphQlInnerHandler ?? new HttpClientHandler() })
             {
                 BaseAddress = GitHubHost.GraphQlBaseUri(lazyConfig.Value.GitHubHost),
             };
@@ -86,36 +143,7 @@ public static class CompositionRoot
             return new GraphQlClient(httpClient, lazyConfig.Value.MaxBackoffSeconds);
         });
 
-        // chorectl's own release check always targets github.com, independent of the configured
-        // target host (ChorectlConfig.GitHubHost) - a GitHub Enterprise Server instance has no
-        // relationship to chorectl's own releases, and a GHE-scoped token wouldn't authenticate
-        // against github.com anyway. Shared between the startup update check below and a
-        // `chorectl update` command's own Updater.
-        // Always authenticates separately from the target client, even when the target
-        // host already is github.com (one extra `gh auth token` call) - simplest correct option,
-        // revisit only if that overhead is measured to matter.
-        var releaseSource = BuildReleaseSource(releaseAuthenticator);
-        services.AddSingleton<IReleaseSource>(releaseSource);
-        services.AddSingleton(_ => new Updater(releaseSource, new HttpClient()));
-
-        var app = new CommandApp(new TypeRegistrar(services));
-        app.Configure(cli =>
-        {
-            AppConfiguration.Configure(cli);
-            cli.ConfigureConsole(console);
-        });
-
-        // Best-effort, and cheap even when there's nothing to clean up - runs for every invocation,
-        // including --help, unlike the update check below.
-        Updater.CleanupPreviousVersion(Environment.ProcessPath ?? string.Empty);
-
-        if (ShouldCheckForUpdate(args))
-        {
-            var updateChecker = new UpdateChecker(releaseSource, updateCheckCachePath ?? UpdateChecker.DefaultCachePath);
-            await TryNotifyOfUpdateAsync(updateChecker, lazyConfig, console);
-        }
-
-        return await app.RunAsync(args);
+        return services;
     }
 
     private static GitHubClient BuildGitHubClient(ICredentialStore credentialStore, string? host)
@@ -126,11 +154,11 @@ public static class CompositionRoot
             : new GitHubClient(ProductHeader, credentialStore, baseUri);
     }
 
-    private static OctokitReleaseSource BuildReleaseSource(IGitHubAuthenticator? releaseAuthenticator)
+    internal static GitHubClient BuildReleaseClient(IGitHubAuthenticator? releaseAuthenticator)
     {
         var authenticator = new CachingGitHubAuthenticator(
             releaseAuthenticator ?? new GhCliAuthenticator(new ProcessRunner(), () => "github.com"));
-        return new OctokitReleaseSource(new GitHubClient(ProductHeader, new GitHubCredentialStore(authenticator)));
+        return new GitHubClient(ProductHeader, new GitHubCredentialStore(authenticator));
     }
 
     // A cheap, args-only gate that runs before lazyConfig or the authenticator are ever touched,

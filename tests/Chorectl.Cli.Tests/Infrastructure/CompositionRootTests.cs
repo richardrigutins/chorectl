@@ -1,6 +1,11 @@
+using System.Net;
 using Chorectl.Cli.Infrastructure;
+using Chorectl.Core.Config;
+using Chorectl.Core.Domain.Dependabot;
 using Chorectl.Core.GitHub;
 using Chorectl.Core.Update;
+using Microsoft.Extensions.DependencyInjection;
+using Octokit;
 using Spectre.Console.Testing;
 
 namespace Chorectl.Cli.Tests.Infrastructure;
@@ -31,14 +36,14 @@ public class CompositionRootTests : IDisposable
     }
 
     [Fact]
-    public async Task Run_WithNullAuthenticator_AndHelpFlag_UsesTheRealGhCliAuthenticatorWithoutCrashing()
+    public async Task Run_ThroughThePublicEntryPoint_WithHelpFlag_UsesTheRealGhCliAuthenticatorWithoutCrashing()
     {
-        // A null authenticator makes RunAsync build a real GhCliAuthenticator internally (the
-        // production path Program.cs uses) - --help must still never touch it, or config, even
-        // though gh itself may not be installed/authenticated in the test environment.
+        // The public overload is what Program.cs calls: it builds a real GhCliAuthenticator
+        // internally - --help must still never touch it, or config, even though gh itself may not
+        // be installed/authenticated in the test environment.
         var console = new TestConsole();
 
-        var exitCode = await CompositionRoot.RunAsync(null, ["--help"], console, UpdateCheckCachePath);
+        var exitCode = await CompositionRoot.RunAsync(["--help"], console);
 
         Assert.Equal(0, exitCode);
         Assert.Contains("USAGE", console.Output);
@@ -74,7 +79,11 @@ public class CompositionRootTests : IDisposable
         var authenticator = new FakeGitHubAuthenticator(new GitHubAuthException("gh is not authenticated"));
         var console = new TestConsole();
 
-        var exitCode = await CompositionRoot.RunAsync(authenticator, ["dependabot", "list"], console, UpdateCheckCachePath);
+        // A real command also triggers the startup update check, which authenticates separately -
+        // without a fake here it would shell out to the real gh (and GitHub) from a unit test.
+        var releaseAuthenticator = new FakeGitHubAuthenticator(new GitHubAuthException("release check not under test"));
+
+        var exitCode = await CompositionRoot.RunAsync(authenticator, ["dependabot", "list"], console, UpdateCheckCachePath, releaseAuthenticator);
 
         Assert.True(authenticator.WasCalled);
         Assert.Equal(1, exitCode);
@@ -115,6 +124,73 @@ public class CompositionRootTests : IDisposable
         }
 
         Assert.False(authenticator.WasCalled);
+    }
+
+    [Fact]
+    public void BuildServices_WithGitHubHostConfigured_TargetsThatHostsRestApi()
+    {
+        using var provider = BuildProvider("github.mycompany.com");
+
+        var client = provider.GetRequiredService<IGitHubClient>();
+
+        Assert.Equal(new Uri("https://github.mycompany.com/api/v3/"), client.Connection.BaseAddress);
+    }
+
+    [Fact]
+    public void BuildServices_WithNoGitHubHost_TargetsGithubComsRestApi()
+    {
+        using var provider = BuildProvider(host: "");
+
+        var client = provider.GetRequiredService<IGitHubClient>();
+
+        Assert.Equal(new Uri("https://api.github.com/"), client.Connection.BaseAddress);
+    }
+
+    [Theory]
+    [InlineData("github.mycompany.com", "https://github.mycompany.com/api/graphql")]
+    [InlineData("", "https://api.github.com/graphql")]
+    public async Task BuildServices_SendsGraphQlRequestsToTheConfiguredHost(string host, string expectedUri)
+    {
+        var handler = new CapturingHandler();
+        using var provider = BuildProvider(host, handler);
+        var graphQl = provider.GetRequiredService<GraphQlClient>();
+        var pr = new DependabotPr { Repo = "repo", Number = 1, Title = "t", Url = "u", HeadRefName = "h", MergeStateStatus = "CLEAN" };
+
+        await graphQl.RefetchAsync("octocat", pr);
+
+        Assert.Equal(new Uri(expectedUri), handler.RequestUri);
+    }
+
+    [Fact]
+    public void BuildReleaseClient_AlwaysTargetsGithubCom()
+    {
+        var client = CompositionRoot.BuildReleaseClient(new FakeGitHubAuthenticator());
+
+        Assert.Equal(new Uri("https://api.github.com/"), client.Connection.BaseAddress);
+    }
+
+    private ServiceProvider BuildProvider(string host, HttpMessageHandler? graphQlInnerHandler = null)
+    {
+        var configLoader = new ConfigLoader(Path.Combine(_tempDir, "config.yml"));
+        configLoader.SetValue("github_host", host);
+
+        return CompositionRoot.BuildServices(
+                new FakeGitHubAuthenticator(), new TestConsole(), configLoader, new Lazy<ChorectlConfig>(configLoader.Load), graphQlInnerHandler)
+            .BuildServiceProvider();
+    }
+
+    private sealed class CapturingHandler : HttpMessageHandler
+    {
+        public Uri? RequestUri { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            RequestUri = request.RequestUri;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{"data":{"repository":null}}""", System.Text.Encoding.UTF8, "application/json"),
+            });
+        }
     }
 
     [Theory]
