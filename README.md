@@ -11,6 +11,7 @@ In other words, it's an overly complicated script to merge and approve multiple 
 ## Prerequisites
 
 - [GitHub CLI (`gh`)](https://cli.github.com/) 2.5.0 or later, installed and authenticated (`gh auth login`) - `chorectl` uses your existing `gh` credentials and does not have a separate login flow
+  - Targeting a GitHub Enterprise Server instance instead of github.com? Authenticate to it first with `gh auth login --hostname <host>`, then set the `github_host` config key (see [Configuration](#configuration))
 
 ## Install
 
@@ -138,6 +139,7 @@ Root help lists every command; `chorectl <command> --help` (or `chorectl dependa
 Preferences live in a YAML file at `~/.config/chorectl/config.yml` (or `$XDG_CONFIG_HOME/chorectl/config.yml` if that variable is set). The file is created on first use of `chorectl config set`; any key you don't set falls back to its default below. Edit it directly, or use `chorectl config get`/`chorectl config set <key> <value>`.
 
 ```yaml
+github_host: ""                   # "" targets github.com; set to a GitHub Enterprise Server hostname to target that instead
 exclude_repos: []                 # ["repo-name", ...] - repos to skip entirely
 include_forks: false
 merge_method: squash              # squash | merge | rebase
@@ -154,6 +156,7 @@ default_select:
 
 | Key | Meaning |
 |---|---|
+| `github_host` | Bare hostname of a GitHub Enterprise Server instance to target, e.g. `chorectl config set github_host github.mycompany.com`; empty (the default) targets github.com. Requires `gh auth login --hostname <host>` against that instance first - `chorectl update` and its startup update check always check github.com regardless of this setting, since chorectl's own releases live there |
 | `exclude_repos` | Comma-separated repo names to exclude from discovery, e.g. `chorectl config set exclude_repos foo,bar` |
 | `include_forks` | Include forked repos in discovery |
 | `merge_method` | Merge strategy used by `dependabot merge` |
@@ -172,7 +175,6 @@ Every merge, rebase request, approval, skip, and failure is appended as one JSON
 ## Known Limitations (v1)
 
 - Personal-account repos only - no organization or team scanning
-- GitHub.com only - no GitHub Enterprise Server
 - Fixed wait time between retries when a merge isn't ready yet, not adaptive to Dependabot's actual processing state
 - No auto-update - `chorectl update` must be run manually; updates are never applied silently
 - No daemon or scheduled mode - invoke manually or from an external cron job with `--yes --json`

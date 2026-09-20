@@ -7,7 +7,13 @@ namespace Chorectl.Core.GitHub;
 /// <summary>
 /// Retrieves the user's GitHub credential via the gh CLI.
 /// </summary>
-public sealed partial class GhCliAuthenticator(IProcessRunner processRunner) : IGitHubAuthenticator
+/// <param name="hostProvider">
+/// Resolves <see cref="Config.ChorectlConfig.GitHubHost"/> lazily - only called when a token is
+/// actually requested, so a caller can pass a config value that isn't loaded yet. <see
+/// langword="null"/> (the default) always targets gh's own default host, same as before this
+/// parameter existed.
+/// </param>
+public sealed partial class GhCliAuthenticator(IProcessRunner processRunner, Func<string?>? hostProvider = null) : IGitHubAuthenticator
 {
     // gh auth token was introduced in gh 2.5.0.
     private static readonly Version MinimumGhVersion = new(2, 5, 0);
@@ -20,7 +26,7 @@ public sealed partial class GhCliAuthenticator(IProcessRunner processRunner) : I
     {
         CheckPrerequisites();
 
-        var result = RunGh("auth token");
+        var result = RunGh(WithHost("auth token"));
         if (result.ExitCode != 0 || string.IsNullOrWhiteSpace(result.StandardOutput))
         {
             throw new GitHubAuthException(
@@ -67,12 +73,18 @@ public sealed partial class GhCliAuthenticator(IProcessRunner processRunner) : I
 
     private void CheckAuthenticated()
     {
-        var result = RunGh("auth status");
+        var result = RunGh(WithHost("auth status"));
         if (result.ExitCode != 0)
         {
             throw new GitHubAuthException(
                 "GitHub CLI is not authenticated. Run `gh auth login` and try again.");
         }
+    }
+
+    private string WithHost(string arguments)
+    {
+        var host = hostProvider?.Invoke();
+        return GitHubHost.IsDefault(host) ? arguments : $"{arguments} --hostname {host}";
     }
 
     private ProcessResult RunGh(string arguments) => processRunner.Run("gh", arguments);

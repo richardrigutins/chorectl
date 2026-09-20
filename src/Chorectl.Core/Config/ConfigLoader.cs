@@ -72,6 +72,7 @@ public sealed class ConfigLoader(string path)
         // still yields the fully-populated config the type's own doc comment promises.
         return config with
         {
+            GitHubHost = config.GitHubHost ?? "",
             ExcludeRepos = config.ExcludeRepos ?? [],
             MergeMethod = config.MergeMethod ?? "squash",
             DefaultSelect = config.DefaultSelect ?? new DefaultSelectConfig(),
@@ -99,6 +100,7 @@ public sealed class ConfigLoader(string path)
         var config = LoadRaw();
         var updated = key switch
         {
+            "github_host" => config with { GitHubHost = ParseGitHubHost(value) },
             "exclude_repos" => config with { ExcludeRepos = ParseRepoList(value) },
             "include_forks" => config with { IncludeForks = ParseBool(key, value) },
             "merge_method" => config with { MergeMethod = ParseMergeMethod(value) },
@@ -115,6 +117,27 @@ public sealed class ConfigLoader(string path)
 
         Save(updated);
         return updated;
+    }
+
+    private static string ParseGitHubHost(string value)
+    {
+        var trimmed = value.Trim();
+        if (trimmed.Length == 0)
+        {
+            return "";
+        }
+
+        var normalized = trimmed
+            .Replace("https://", "", StringComparison.OrdinalIgnoreCase)
+            .Replace("http://", "", StringComparison.OrdinalIgnoreCase)
+            .TrimEnd('/');
+
+        if (normalized.Contains('/') || normalized.Any(char.IsWhiteSpace))
+        {
+            throw new ArgumentException($"Invalid value '{value}' for 'github_host' - expected a bare hostname, e.g. github.mycompany.com.");
+        }
+
+        return normalized;
     }
 
     private static List<string> ParseRepoList(string value) =>
