@@ -82,7 +82,7 @@ public static class CompositionRoot
             {
                 BaseAddress = GitHubHost.GraphQlBaseUri(lazyConfig.Value.GitHubHost),
             };
-            httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("chorectl", "1.0"));
+            httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("chorectl", CurrentVersion.Value));
             return new GraphQlClient(httpClient, lazyConfig.Value.MaxBackoffSeconds);
         });
 
