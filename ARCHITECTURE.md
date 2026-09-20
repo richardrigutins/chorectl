@@ -37,7 +37,7 @@ Typed command/settings classes, built-in help generation, and it composes direct
 
 ### Configuration
 
-YAML at the XDG-style `~/.config/chorectl/config.yml` (`$XDG_CONFIG_HOME` if set), loaded/validated/persisted by `Core/Config/ConfigLoader.cs`. Missing keys - or a missing file entirely - resolve to `ChorectlConfig`'s built-in defaults, so a partially-written file is never a problem. `Load()` validates every value; `SetValue()` (used by `chorectl config set`) validates just the one key being written, so `config set` can still repair a config file with an unrelated bad value in it.
+YAML at the XDG-style `~/.config/chorectl/config.yml` (`$XDG_CONFIG_HOME` if set), loaded/validated/persisted by `Core/Config/ConfigLoader.cs`. Missing keys - or a missing file entirely - resolve to `ChorectlConfig`'s built-in defaults, so a partially-written file is never a problem. Unrecognized keys are likewise ignored rather than fatal, so a config file left over from a newer or in-development build (a since-renamed or not-yet-released key) still loads under an older one. `Load()` validates every value; `SetValue()` (used by `chorectl config set`) validates just the one key being written, so `config set` can still repair a config file with an unrelated bad value in it.
 
 ### State/caching
 

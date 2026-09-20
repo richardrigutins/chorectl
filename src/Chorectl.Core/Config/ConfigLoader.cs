@@ -14,8 +14,13 @@ public sealed class ConfigLoader(string path)
         .WithNamingConvention(UnderscoredNamingConvention.Instance)
         .Build();
 
+    // Unrecognized keys are ignored rather than treated as fatal - e.g. a config.yml written by a
+    // newer or in-development chorectl build with a since-renamed or not-yet-released key must
+    // still load under an older build, the same forward-compatibility LoadRaw already gives
+    // missing keys (see the class doc comment).
     private static readonly IDeserializer Deserializer = new DeserializerBuilder()
         .WithNamingConvention(UnderscoredNamingConvention.Instance)
+        .IgnoreUnmatchedProperties()
         .Build();
 
     /// <summary>
