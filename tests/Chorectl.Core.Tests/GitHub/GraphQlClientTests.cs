@@ -212,6 +212,7 @@ public class GraphQlClientTests
 
         var requestBody = Assert.Single(handler.RequestBodies);
         Assert.Contains("vulnerabilityAlerts", requestBody);
+        Assert.Contains("states: [OPEN]", requestBody);
         Assert.Contains("dependabotUpdate", requestBody);
         Assert.Contains("repository(owner:", requestBody);
     }
