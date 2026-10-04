@@ -224,7 +224,7 @@ public sealed class GraphQlClient(HttpClient httpClient, int maxBackoffSeconds =
         string.Join(Environment.NewLine, repos.Select((repo, i) => $$"""
             repo{{i}}: repository(owner: {{JsonSerializer.Serialize(repo.Owner)}}, name: {{JsonSerializer.Serialize(repo.Name)}}) {
               name
-              vulnerabilityAlerts(first: 100) {
+              vulnerabilityAlerts(first: 100, states: [OPEN]) {
                 pageInfo {
                   hasNextPage
                 }
