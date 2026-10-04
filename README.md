@@ -66,7 +66,7 @@ All `dependabot` subcommands accept these common flags:
 | Flag | Meaning |
 |---|---|
 | `--dry-run` | Show the selection and summary without merging/rebasing/approving anything |
-| `--yes` | Skip the selection screen and act on the default-selected set |
+| `-y, --yes` | Skip the selection screen and act on the default-selected set |
 
 ### `chorectl dependabot list`
 
